@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum Language {
+  CPP
+  PYTHON
+}
+
+enum ProblemStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  QUEUED
+  JUDGING
+  ACCEPTED
+  PARTIAL
+  WRONG_ANSWER
+  COMPILE_ERROR
+  RUNTIME_ERROR
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  SYSTEM_ERROR
+}
+
+enum CompetitionStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+model User {
+  id            String       @id @default(cuid())
+  googleSub     String       @unique
+  email         String       @unique
+  displayName   String
+  avatarUrl     String?      @db.Text
+  role          UserRole     @default(USER)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  submissions   Submission[]
+  participations CompetitionParticipant[]
+  createdProblems Problem[]  @relation("ProblemCreator")
+  createdCompetitions Competition[] @relation("CompetitionCreator")
+}
+
+model Problem {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  statement       String        @db.LongText
+  inputDescription String?      @db.Text
+  outputDescription String?     @db.Text
+  constraints     String?       @db.Text
+  difficulty      Int           @default(1)
+  allowedLanguages Json
+  timeLimitMs     Int           @default(1000)
+  memoryLimitMb   Int           @default(128)
+  maxScore        Decimal       @default(100) @db.Decimal(8, 2)
+  status          ProblemStatus @default(DRAFT)
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  createdBy       User          @relation("ProblemCreator", fields: [createdById], references: [id])
+  testCases       TestCase[]
+  submissions     Submission[]
+  competitions    CompetitionProblem[]
+
+  @@index([status, createdAt])
+}
+
+model TestCase {
+  id             String   @id @default(cuid())
+  problemId      String
+  name           String
+  input          String   @db.LongText
+  expectedOutput String   @db.LongText
+  score          Decimal  @db.Decimal(8, 2)
+  isSample       Boolean  @default(false)
+  position       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  problem        Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  results        SubmissionResult[]
+
+  @@unique([problemId, position])
+  @@index([problemId])
+}
+
+model Competition {
+  id          String            @id @default(cuid())
+  title       String
+  description String?           @db.Text
+  startsAt    DateTime
+  endsAt      DateTime
+  status      CompetitionStatus @default(DRAFT)
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdBy   User              @relation("CompetitionCreator", fields: [createdById], references: [id])
+  problems    CompetitionProblem[]
+  participants CompetitionParticipant[]
+  submissions Submission[]
+
+  @@index([status, startsAt, endsAt])
+}
+
+model CompetitionProblem {
+  competitionId String
+  problemId     String
+  position      Int
+  score         Decimal     @db.Decimal(8, 2)
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  problem       Problem     @relation(fields: [problemId], references: [id])
+
+  @@id([competitionId, problemId])
+  @@unique([competitionId, position])
+}
+
+model CompetitionParticipant {
+  competitionId String
+  userId        String
+  joinedAt      DateTime    @default(now())
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([competitionId, userId])
+  @@index([competitionId, joinedAt])
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  userId         String
+  problemId      String
+  competitionId  String?
+  language       Language
+  sourceCode     String           @db.LongText
+  status         SubmissionStatus @default(QUEUED)
+  score          Decimal          @default(0) @db.Decimal(8, 2)
+  passedCount    Int              @default(0)
+  totalCount     Int              @default(0)
+  executionTimeMs Int?
+  memoryUsedKb   Int?
+  compilerOutput String?          @db.Text
+  systemMessage  String?          @db.Text
+  submittedAt    DateTime         @default(now())
+  judgedAt       DateTime?
+  user           User             @relation(fields: [userId], references: [id])
+  problem        Problem          @relation(fields: [problemId], references: [id])
+  competition    Competition?     @relation(fields: [competitionId], references: [id])
+  results        SubmissionResult[]
+
+  @@index([userId, submittedAt])
+  @@index([problemId, submittedAt])
+  @@index([competitionId, submittedAt])
+}
+
+model SubmissionResult {
+  id              String           @id @default(cuid())
+  submissionId    String
+  testCaseId      String
+  status          SubmissionStatus
+  score           Decimal          @default(0) @db.Decimal(8, 2)
+  executionTimeMs Int?
+  memoryUsedKb    Int?
+  actualOutput    String?          @db.LongText
+  errorOutput     String?          @db.Text
+  submission      Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testCase        TestCase         @relation(fields: [testCaseId], references: [id])
+
+  @@unique([submissionId, testCaseId])
+  @@index([testCaseId])
+}
