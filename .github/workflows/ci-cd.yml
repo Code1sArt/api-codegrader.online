@@ -1,0 +1,97 @@
+name: CI/CD to Plesk
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  PLESK_HOST: "118.27.146.122"
+  PLESK_USER: "nrgrader.online"
+  DEPLOY_PATH: "/var/www/vhosts/nrgrader.online/api.nrgrader.online"
+
+jobs:
+  ci:
+    name: Lint, test and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  deploy:
+    name: Deploy to Plesk
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PLESK_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PLESK_SSH_KNOWN_HOSTS }}
+        run: |
+          if [[ -z "$SSH_PRIVATE_KEY" || -z "$SSH_KNOWN_HOSTS" ]]; then
+            echo "PLESK_SSH_PRIVATE_KEY and PLESK_SSH_KNOWN_HOSTS must be configured." >&2
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/plesk_deploy
+          chmod 600 ~/.ssh/plesk_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload application
+        run: |
+          rsync -az --delete-delay \
+            --exclude='.env' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='dist/' \
+            --exclude='node_modules/' \
+            --exclude='tmp/' \
+            --exclude='uploads/' \
+            --exclude='*.log' \
+            -e "ssh -i ~/.ssh/plesk_deploy -o IdentitiesOnly=yes" \
+            ./ "$PLESK_USER@$PLESK_HOST:$DEPLOY_PATH/"
+
+      - name: Install, migrate, build and restart
+        run: |
+          ssh -i ~/.ssh/plesk_deploy -o IdentitiesOnly=yes \
+            "$PLESK_USER@$PLESK_HOST" \
+            "bash '$DEPLOY_PATH/scripts/deploy-plesk.sh' '$DEPLOY_PATH'"
+
+      - name: Check API health
+        if: vars.APP_HEALTH_URL != ''
+        env:
+          HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
+        run: curl --fail --show-error --silent --retry 10 --retry-delay 3 --retry-all-errors "$HEALTH_URL"

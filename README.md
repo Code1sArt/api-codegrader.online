@@ -103,3 +103,9 @@ curl -X POST http://localhost:3100/api/problems/PROBLEM_ID/test-cases \
 npm run build
 npm test
 ```
+
+## Deploy ไปยัง Plesk
+
+โปรเจกต์มี GitHub Actions สำหรับตรวจสอบและ deploy เมื่อ push เข้า `main`
+ดูขั้นตอนตั้งค่า Plesk, SSH key และ GitHub secrets ที่
+[`PLESK_DEPLOYMENT.md`](./PLESK_DEPLOYMENT.md)
