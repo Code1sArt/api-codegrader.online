@@ -46,6 +46,10 @@ fi
 npm ci --no-audit --no-fund
 npm run db:generate
 npm run build
+if [[ ! -f dist/main.js ]]; then
+  echo "Build completed without dist/main.js." >&2
+  exit 1
+fi
 npm run db:deploy
 npm prune --omit=dev --no-audit --no-fund
 
