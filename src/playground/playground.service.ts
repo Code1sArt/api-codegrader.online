@@ -3,8 +3,9 @@ import { PistonRunnerService } from '../runner/piston-runner.service';
 import { SettingsService } from '../settings/settings.service';
 import { RunCodeDto } from './dto/run-code.dto';
 
-const PLAYGROUND_TIME_LIMIT_MS = 5_000;
-const PLAYGROUND_MEMORY_LIMIT_MB = 256;
+// Keep these at or below the limits configured by the production Piston API.
+const PLAYGROUND_TIME_LIMIT_MS = 3_000;
+const PLAYGROUND_MEMORY_LIMIT_MB = 128;
 const MAX_OUTPUT_LENGTH = 100_000;
 
 @Injectable()

@@ -37,6 +37,6 @@ describe('PlaygroundService', () => {
     );
 
     await expect(service.run(dto)).resolves.toEqual(result);
-    expect(runner.execute).toHaveBeenCalledWith(Language.PYTHON, dto.sourceCode, dto.stdin, 5_000, 256);
+    expect(runner.execute).toHaveBeenCalledWith(Language.PYTHON, dto.sourceCode, dto.stdin, 3_000, 128);
   });
 });
