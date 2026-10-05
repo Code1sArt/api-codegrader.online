@@ -57,7 +57,7 @@ export class PistonRunnerService {
           compile_memory_limit: 512 * 1024 * 1024,
           run_memory_limit: memoryLimitMb * 1024 * 1024,
         }),
-        signal: AbortSignal.timeout(this.config.get<number>('RUNNER_REQUEST_TIMEOUT_MS', 30_000)),
+        signal: AbortSignal.timeout(this.numberSetting('RUNNER_REQUEST_TIMEOUT_MS', 30_000)),
       });
     } catch (error) {
       throw new BadGatewayException(error instanceof Error ? `Cannot connect to Piston: ${error.message}` : 'Cannot connect to Piston');
@@ -91,7 +91,7 @@ export class PistonRunnerService {
   }
 
   private async acquire() {
-    const max = Math.max(1, this.config.get<number>('RUNNER_MAX_CONCURRENCY', 2));
+    const max = Math.max(1, this.numberSetting('RUNNER_MAX_CONCURRENCY', 2));
     if (this.active < max) {
       this.active += 1;
       return () => this.release();
@@ -104,5 +104,10 @@ export class PistonRunnerService {
     const next = this.waiters.shift();
     if (next) next();
     else this.active -= 1;
+  }
+
+  private numberSetting(key: string, fallback: number) {
+    const value = Number(this.config.get<string | number>(key, fallback));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 }
