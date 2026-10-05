@@ -8,7 +8,9 @@ import { CompetitionsModule } from './competitions/competitions.module';
 import { HealthController } from './health.controller';
 import { ProblemsModule } from './problems/problems.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PlaygroundModule } from './playground/playground.module';
 import { RolesGuard } from './common/roles.guard';
+import { SettingsModule } from './settings/settings.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 
 @Module({
@@ -20,6 +22,8 @@ import { SubmissionsModule } from './submissions/submissions.module';
     ProblemsModule,
     CompetitionsModule,
     SubmissionsModule,
+    SettingsModule,
+    PlaygroundModule,
   ],
   controllers: [HealthController],
   providers: [

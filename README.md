@@ -12,6 +12,7 @@ Backend API สำหรับระบบฝึกทำโจทย์แล�
 - ส่งคำตอบเข้าคิว ตัดสินด้วย Piston และเก็บผลราย test case
 - การแข่งขันแบบกำหนดช่วงเวลา, สมัครเข้าร่วม, กำหนดน้ำหนักคะแนนรายโจทย์ และ leaderboard
 - Leaderboard เรียงตามคะแนนรวม, เวลาที่ทำสำเร็จ, CPU time และ memory ตามลำดับ
+- Playground สำหรับรัน C++/Python ด้วย stdin โดย Admin เปิดหรือปิดระบบจากฐานข้อมูลได้
 - Swagger UI ที่ `/api/docs`
 
 ## เริ่มใช้งาน
@@ -60,6 +61,9 @@ Content-Type: application/json
 | PATCH | `/api/competitions/:id/status` | Admin | เปิด/ปิดการแข่งขัน |
 | POST | `/api/competitions/:id/join` | Any | สมัครการแข่งขัน |
 | GET | `/api/competitions/:id/leaderboard` | Any | ตารางคะแนน |
+| GET | `/api/settings` | Any | อ่านสถานะฟีเจอร์ส่วนกลาง |
+| PATCH | `/api/settings` | Admin | เปิดหรือปิด Playground |
+| POST | `/api/playground/run` | User/Admin | รันโค้ดใน Playground (เมื่อเปิดใช้งาน) |
 
 ตัวอย่างสร้างโจทย์:
 
