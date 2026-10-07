@@ -13,7 +13,6 @@ export function rankLeaderboard(entries: LeaderboardEntry[]) {
   return [...entries]
     .sort((a, b) =>
       b.totalScore - a.totalScore ||
-      a.completionTimeMs - b.completionTimeMs ||
       a.executionTimeMs - b.executionTimeMs ||
       a.memoryUsedKb - b.memoryUsedKb ||
       a.displayName.localeCompare(b.displayName),
