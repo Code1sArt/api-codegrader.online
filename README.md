@@ -60,6 +60,10 @@ Content-Type: application/json
 | POST | `/api/competitions` | Admin | สร้างการแข่งขัน |
 | PATCH | `/api/competitions/:id/status` | Admin | เปิด/ปิดการแข่งขัน |
 | POST | `/api/competitions/:id/join` | Any | สมัครการแข่งขัน |
+| POST | `/api/problems/:id/subtasks` | Admin | เพิ่มกลุ่มทดสอบ |
+| PATCH | `/api/problems/:id/subtasks/:subtaskId` | Admin | แก้ไขกลุ่มทดสอบ |
+| DELETE | `/api/problems/:id/subtasks/:subtaskId` | Admin | ลบกลุ่มที่ไม่มีเทส |
+| PATCH | `/api/problems/:id/test-cases/:testCaseId` | Admin | ย้ายเทสเข้ากลุ่มหรือกำหนดคะแนนรายเทส |
 | GET | `/api/competitions/:id/leaderboard` | Any | ตารางคะแนน |
 | GET | `/api/settings` | Any | อ่านสถานะฟีเจอร์ส่วนกลาง |
 | PATCH | `/api/settings` | Admin | เปิดหรือปิด Playground |
@@ -113,3 +117,15 @@ npm test
 โปรเจกต์มี GitHub Actions สำหรับตรวจสอบและ deploy เมื่อ push เข้า `main`
 ดูขั้นตอนตั้งค่า Plesk, SSH key และ GitHub secrets ที่
 [`PLESK_DEPLOYMENT.md`](./PLESK_DEPLOYMENT.md)
+
+## Subtask scoring
+
+Migration `20261007050000_add_subtasks` เพิ่มตาราง Subtask, TestCase.subtaskId และ Submission.subtaskResults แบบ nullable โดยไม่เปลี่ยนคะแนนหรือเทสเดิม รัน `npm run db:deploy` และ `npm run db:generate` ก่อน build/start backend รุ่นนี้
+
+สร้างกลุ่มด้วย `{ "name": "ข้อมูลเล็ก", "description": "n ≤ 100", "score": 20, "position": 1 }` ที่ `POST /api/problems/:id/subtasks` ใช้ payload เดียวกันเมื่อ PATCH อัปโหลดเทสด้วย multipart `subtaskId=GROUP_ID` และ `score=0` หรือย้ายเทสด้วย PATCH `{ "subtaskId": "GROUP_ID", "score": 0 }` เมื่อต้องการคะแนนรายเทสให้ส่ง `subtaskId` เป็น string ว่างและกำหนด `score` (0 สำหรับตัวอย่างที่ไม่ให้คะแนน)
+
+กลุ่มให้คะแนนครั้งเดียวเมื่อทุกเทสผ่าน คะแนนรายเทสภายในกลุ่มเป็น 0 ทุกกลุ่มต้องมีสมาชิกก่อนเผยแพร่ และคะแนนกลุ่มรวมกับคะแนนเทสที่ไม่อยู่ในกลุ่มต้องเท่ากับ maxScore ข้อความ description อธิบายขนาด/เงื่อนไขของข้อมูล ผู้ดูแลต้องเตรียมเทสให้ตรงกับข้อความนี้เอง ใช้ timeLimitMs / memoryLimitMb ของโจทย์กับทุกเทส
+
+แก้กลุ่มและการจัดเทสได้เฉพาะฉบับร่างที่ไม่มี submission แล้วเท่านั้น ไม่ย้ายคำตอบเดิมเข้าเกณฑ์ใหม่ ผลกลุ่มถูกเก็บเป็น snapshot ใน submission: คะแนนเต็ม คะแนนที่ได้ สถานะ จำนวนผ่าน/ทั้งหมด เวลารวม และ peak memory ค่าที่ runner ไม่รายงานแสดงเป็น null การตรวจดำเนินต่อหลัง timeout / runtime / memory error เพื่อวัดกลุ่มอื่น แต่หยุดเมื่อ compile error ระบบยังซ่อน input/output ของเทสลับตามเดิม
+
+Leaderboard ใช้คะแนนรวมจากกลุ่มและคะแนนรายเทสตามน้ำหนักการแข่งขัน แล้วเรียงคะแนนมากที่สุด เวลาโปรแกรมรวมน้อยที่สุด และผลรวม peak memory ของแต่ละโจทย์น้อยที่สุด ไม่ใช้เวลาส่งเป็นเกณฑ์ Subtask ไม่ได้คำนวณ Big O อัตโนมัติ

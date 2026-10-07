@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator';
@@ -47,10 +48,24 @@ export class SetProblemStatusDto {
   @IsEnum(ProblemStatus) status: ProblemStatus;
 }
 
+export class SubtaskDto {
+  @IsString() @IsNotEmpty() @MaxLength(191) name: string;
+  @IsOptional() @IsString() @MaxLength(5000) description?: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(999999.99) score: number;
+  @IsInt() @Min(1) position: number;
+}
+
+export class AssignTestCaseDto {
+  // An empty ID moves a test back to individual scoring.
+  @IsString() subtaskId: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(999999.99) score: number;
+}
+
 export class UploadTestCaseDto {
+  @IsOptional() @IsString() subtaskId?: string;
   @IsString() @IsNotEmpty() name: string;
   @Type(() => Number) @IsInt() @Min(1) position: number;
-  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) score: number;
+  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(999999.99) score: number;
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   isSample = false;

@@ -1,16 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { CompetitionStatus, Language, ProblemStatus, SubmissionStatus, UserRole } from '@prisma/client';
+import { Prisma, CompetitionStatus, Language, ProblemStatus, SubmissionStatus, UserRole } from '@prisma/client';
 import type { AuthUser } from '../common/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { PistonRunnerService } from '../runner/piston-runner.service';
+import { scoreSubtasks, type JudgedTest } from './subtask-scoring';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
-
-const TERMINAL_FAILURES = new Set<SubmissionStatus>([
-  SubmissionStatus.COMPILE_ERROR,
-  SubmissionStatus.RUNTIME_ERROR,
-  SubmissionStatus.TIME_LIMIT_EXCEEDED,
-  SubmissionStatus.MEMORY_LIMIT_EXCEEDED,
-]);
 
 @Injectable()
 export class SubmissionsService implements OnModuleInit {
@@ -74,7 +68,7 @@ export class SubmissionsService implements OnModuleInit {
       where: { id },
       include: {
         problem: { select: { id: true, slug: true, title: true, maxScore: true } },
-        results: { include: { testCase: { select: { name: true, position: true, isSample: true } } }, orderBy: { testCase: { position: 'asc' } } },
+        results: { include: { testCase: { select: { name: true, position: true, isSample: true, subtaskId: true } } }, orderBy: { testCase: { position: 'asc' } } },
       },
     });
     if (!submission) throw new NotFoundException('Submission not found');
@@ -83,6 +77,7 @@ export class SubmissionsService implements OnModuleInit {
       ...submission,
       results: submission.results.map((result) => ({
         id: result.id,
+        subtaskId: result.testCase.subtaskId,
         name: result.testCase.isSample ? result.testCase.name : `Test ${result.testCase.position}`,
         status: result.status,
         score: result.score,
@@ -115,10 +110,11 @@ export class SubmissionsService implements OnModuleInit {
     this.processing.add(id);
     try {
       const submission = await this.prisma.submission.update({
-        where: { id }, data: { status: SubmissionStatus.JUDGING, systemMessage: null },
-        include: { problem: { include: { testCases: { orderBy: { position: 'asc' } } } } },
+        where: { id }, data: { status: SubmissionStatus.JUDGING, systemMessage: null, score: 0, passedCount: 0, subtaskResults: Prisma.DbNull },
+        include: { problem: { include: { subtasks: { orderBy: { position: 'asc' } }, testCases: { orderBy: { position: 'asc' } } } } },
       });
-      let score = 0;
+      await this.prisma.submissionResult.deleteMany({ where: { submissionId: id } });
+      const judgedTests: JudgedTest[] = [];
       let passedCount = 0;
       let totalTime = 0;
       let maxMemory = 0;
@@ -138,7 +134,8 @@ export class SubmissionsService implements OnModuleInit {
           resultStatus = SubmissionStatus.WRONG_ANSWER;
         }
         const passed = resultStatus === SubmissionStatus.ACCEPTED;
-        if (passed) { score += Number(testCase.score); passedCount += 1; }
+        if (passed) passedCount += 1;
+        judgedTests.push({ testCaseId: testCase.id, status: resultStatus, executionTimeMs: run.executionTimeMs, memoryUsedKb: run.memoryUsedKb });
         totalTime += run.executionTimeMs ?? 0;
         maxMemory = Math.max(maxMemory, run.memoryUsedKb ?? 0);
         compilerOutput ||= run.compilerOutput;
@@ -147,27 +144,28 @@ export class SubmissionsService implements OnModuleInit {
             submissionId: id,
             testCaseId: testCase.id,
             status: resultStatus,
-            score: passed ? testCase.score : 0,
+            score: passed && !testCase.subtaskId ? testCase.score : 0,
             executionTimeMs: run.executionTimeMs,
             memoryUsedKb: run.memoryUsedKb,
             actualOutput: run.stdout,
             errorOutput: run.stderr || run.message || null,
           },
         });
-        if (TERMINAL_FAILURES.has(resultStatus)) {
+        if (resultStatus === SubmissionStatus.COMPILE_ERROR) {
           finalStatus = resultStatus;
           break;
         }
-        if (!passed) finalStatus = SubmissionStatus.WRONG_ANSWER;
+        if (!passed && finalStatus === SubmissionStatus.ACCEPTED) finalStatus = resultStatus;
       }
+      const { score, subtaskResults } = scoreSubtasks(submission.problem.testCases, submission.problem.subtasks, judgedTests, finalStatus);
       if (passedCount === submission.problem.testCases.length) finalStatus = SubmissionStatus.ACCEPTED;
       else if (score > 0) finalStatus = SubmissionStatus.PARTIAL;
       await this.prisma.submission.update({
         where: { id },
         data: {
-          status: finalStatus, score, passedCount,
-          executionTimeMs: totalTime || null,
-          memoryUsedKb: maxMemory || null,
+          status: finalStatus, score, passedCount, subtaskResults,
+          executionTimeMs: judgedTests.length && judgedTests.every((run) => run.executionTimeMs !== null) ? totalTime : null,
+          memoryUsedKb: judgedTests.length && judgedTests.every((run) => run.memoryUsedKb !== null) ? maxMemory : null,
           compilerOutput: compilerOutput || null,
           judgedAt: new Date(),
         },

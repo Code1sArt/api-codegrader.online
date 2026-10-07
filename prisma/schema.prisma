@@ -76,6 +76,7 @@ model Problem {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   createdBy         User                 @relation("ProblemCreator", fields: [createdById], references: [id])
+  subtasks          Subtask[]
   testCases         TestCase[]
   submissions       Submission[]
   competitions      CompetitionProblem[]
@@ -83,9 +84,25 @@ model Problem {
   @@index([status, createdAt])
 }
 
+model Subtask {
+  id          String     @id @default(cuid())
+  problemId   String
+  name        String
+  description String?    @db.Text
+  score       Decimal    @db.Decimal(8, 2)
+  position    Int
+  problem     Problem    @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  testCases   TestCase[]
+
+  @@unique([problemId, position])
+  @@index([problemId])
+}
+
 model TestCase {
   id             String             @id @default(cuid())
   problemId      String
+  subtaskId      String?
+  subtask        Subtask?           @relation(fields: [subtaskId], references: [id], onDelete: SetNull)
   name           String
   input          String             @db.LongText
   expectedOutput String             @db.LongText
@@ -155,6 +172,7 @@ model Submission {
   totalCount      Int                @default(0)
   executionTimeMs Int?
   memoryUsedKb    Int?
+  subtaskResults  Json?
   compilerOutput  String?            @db.Text
   systemMessage   String?            @db.Text
   submittedAt     DateTime           @default(now())

@@ -16,6 +16,8 @@ import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthUser } from '../common/auth-user';
 import { Roles } from '../common/roles.decorator';
 import {
+  SubtaskDto,
+  AssignTestCaseDto,
   CreateProblemDto,
   SetProblemStatusDto,
   UpdateProblemDto,
@@ -55,6 +57,30 @@ export class ProblemsController {
   @Patch(':id/status')
   setStatus(@Param('id') id: string, @Body() dto: SetProblemStatusDto) {
     return this.problems.setStatus(id, dto.status);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Post(':id/subtasks')
+  createSubtask(@Param('id') id: string, @Body() dto: SubtaskDto) {
+    return this.problems.saveSubtask(id, dto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/subtasks/:subtaskId')
+  updateSubtask(@Param('id') id: string, @Param('subtaskId') subtaskId: string, @Body() dto: SubtaskDto) {
+    return this.problems.saveSubtask(id, dto, subtaskId);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete(':id/subtasks/:subtaskId')
+  removeSubtask(@Param('id') id: string, @Param('subtaskId') subtaskId: string) {
+    return this.problems.removeSubtask(id, subtaskId);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/test-cases/:testCaseId')
+  assignTestCase(@Param('id') id: string, @Param('testCaseId') testCaseId: string, @Body() dto: AssignTestCaseDto) {
+    return this.problems.assignTestCase(id, testCaseId, dto);
   }
 
   @Roles(UserRole.ADMIN)
