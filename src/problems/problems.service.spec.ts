@@ -1,11 +1,11 @@
-import { ProblemStatus as P, UserRole } from '@prisma/client';
+import { Prisma, ProblemStatus as P, UserRole } from '@prisma/client';
 import { ProblemsService } from './problems.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 function setup() {
   const problem = { id: 'p1', status: P.DRAFT as P, maxScore: 100, subtasks: [{ id: 'g1', score: 100 }], testCases: [{ id: 't1', subtaskId: 'g1', score: 999 }] };
   const prisma = {
-    problem: { findUnique: jest.fn().mockResolvedValue(problem), findFirst: jest.fn().mockResolvedValue(problem), update: jest.fn() },
+    problem: { findUnique: jest.fn().mockResolvedValue(problem), findFirst: jest.fn<Promise<unknown>, [Prisma.ProblemFindFirstArgs]>().mockResolvedValue(problem), update: jest.fn() },
     submission: { count: jest.fn().mockResolvedValue(0) },
     subtask: { findFirst: jest.fn().mockResolvedValue({ id: 'g1', problemId: 'p1' }), count: jest.fn().mockResolvedValue(1), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     testCase: { count: jest.fn().mockResolvedValue(1), findFirst: jest.fn().mockResolvedValue(problem.testCases[0]), update: jest.fn(), create: jest.fn() },
@@ -69,6 +69,6 @@ describe('subtask configuration', () => {
     const result = await service.get({ sub: 'u1', role: UserRole.USER, email: 'u@example.test' }, 'p1');
     expect(result.subtasks).toEqual(problem.subtasks);
     expect(result.testCases).toEqual([]);
-    expect(prisma.problem.findFirst).toHaveBeenCalledWith(expect.objectContaining({ include: expect.objectContaining({ testCases: expect.objectContaining({ where: { isSample: true } }) }) }));
+    expect(prisma.problem.findFirst.mock.calls[0][0]).toMatchObject({ include: { testCases: { where: { isSample: true } } } });
   });
 });
