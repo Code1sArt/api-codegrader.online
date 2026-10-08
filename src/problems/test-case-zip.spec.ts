@@ -27,7 +27,13 @@ describe('test case ZIP parsing', () => {
   });
   it('limits compressed uploads and expanded entry sizes', async () => {
     await expect(readTestCaseZip(Buffer.alloc(ZIP_MAX_BYTES + 1))).rejects.toThrow('20 MB');
-    await expect(readTestCaseZip(testZip([['1.in', Buffer.alloc(2 * 1024 * 1024 + 1)], ['1.sol', '1']]))).rejects.toThrow('2 MB');
+    await expect(readTestCaseZip(testZip([['1.in', Buffer.alloc(10 * 1024 * 1024 + 1)], ['1.sol', '1']]))).rejects.toThrow('10 MB');
+  });
+  it('accepts files above the old 2 MB limit up to exactly 10 MB', async () => {
+    const input = Buffer.alloc(10 * 1024 * 1024, 'a');
+    const result = await readTestCaseZip(testZip([['1.in', input], ['1.sol', 'ok']]));
+    expect(Buffer.byteLength(result[0].input)).toBe(10 * 1024 * 1024);
+    expect(result[0].expectedOutput).toBe('ok');
   });
   it('checks checksums and rejects encrypted entries', async () => {
     const corrupt = testZip([['1.in', '1'], ['1.sol', '1']]);

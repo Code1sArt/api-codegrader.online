@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { fromBufferPromise, type ZipFile } from 'yauzl';
 
 export const ZIP_MAX_BYTES = 20 * 1024 * 1024;
-const FILE_MAX_BYTES = 2 * 1024 * 1024;
+export const FILE_MAX_BYTES = 10 * 1024 * 1024;
 const TOTAL_MAX_BYTES = 50 * 1024 * 1024;
 const MAX_PAIRS = 500;
 export type ZipTestCase = { name: string; input: string; expectedOutput: string };
@@ -32,7 +32,7 @@ export async function readTestCaseZip(buffer: Buffer): Promise<ZipTestCase[]> {
       const pair = pairs.get(key) ?? { name };
       const field = match[2].toLowerCase() === 'in' ? 'input' : 'expectedOutput';
       if (pair[field] !== undefined) throw new BadRequestException(`ไฟล์ชื่อซ้ำ: ${path}`);
-      if (entry.uncompressedSize > FILE_MAX_BYTES) throw new BadRequestException(`ไฟล์ ${path} หลังแตก ZIP ต้องไม่เกิน 2 MB`);
+      if (entry.uncompressedSize > FILE_MAX_BYTES) throw new BadRequestException(`ไฟล์ ${path} หลังแตก ZIP ต้องไม่เกิน 10 MB`);
       total += entry.uncompressedSize;
       if (total > TOTAL_MAX_BYTES) throw new BadRequestException('ไฟล์ทั้งหมดหลังแตก ZIP ต้องไม่เกิน 50 MB');
       const stream = await zip.openReadStreamPromise(entry);
@@ -40,7 +40,7 @@ export async function readTestCaseZip(buffer: Buffer): Promise<ZipTestCase[]> {
       let size = 0;
       for await (const chunk of stream as AsyncIterable<Buffer>) {
         size += chunk.length;
-        if (size > FILE_MAX_BYTES) { stream.destroy(); throw new BadRequestException(`ไฟล์ ${path} หลังแตก ZIP ต้องไม่เกิน 2 MB`); }
+        if (size > FILE_MAX_BYTES) { stream.destroy(); throw new BadRequestException(`ไฟล์ ${path} หลังแตก ZIP ต้องไม่เกิน 10 MB`); }
         chunks.push(chunk);
       }
       const content = Buffer.concat(chunks);

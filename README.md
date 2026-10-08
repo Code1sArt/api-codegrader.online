@@ -135,7 +135,7 @@ Leaderboard ใช้คะแนนรวมจากกลุ่มและ�
 
 `POST /api/problems/:id/test-cases/zip` รับ multipart `subtaskId` และ `zipFile` เฉพาะ Admin และใช้กฎ scoringEditable เดียวกับ subtask จับคู่ `.in` / `.sol` ชื่อเดียวกันและโฟลเดอร์เดียวกัน (ไม่แยกตัวพิมพ์เล็ก/ใหญ่) รองรับโฟลเดอร์ย่อยและข้าม metadata ของ macOS เรียงชื่อแบบตัวเลข ต่อ position จากลำดับสูงสุด แล้วนำเข้าทุกเทสเป็น `isSample=false`, `score=0` คืน `{ count, subtaskId, startPosition }`
 
-ตรวจทุกคู่และ checksum ก่อนบันทึกใน transaction เดียว ปฏิเสธชื่อซ้ำ คู่ไม่ครบ ไฟล์ไม่ใช่ UTF-8 ไฟล์นอกสกุล .in/.sol ZIP เสียหาย มีรหัสผ่าน หรือ symbolic link จำกัด ZIP 20 MB, แต่ละไฟล์หลังแตก 2 MB, รวมหลังแตก 50 MB และ 500 คู่ ไม่เขียนไฟล์ที่แตกลง disk ไม่ต้องเพิ่ม migration ใหม่ ติดตั้ง dependency ด้วย `npm ci` ตาม lockfile และตั้ง reverse proxy ให้รับ multipart ได้ เช่น `client_max_body_size 25m;`
+ตรวจทุกคู่และ checksum ก่อนบันทึกใน transaction เดียว ปฏิเสธชื่อซ้ำ คู่ไม่ครบ ไฟล์ไม่ใช่ UTF-8 ไฟล์นอกสกุล .in/.sol ZIP เสียหาย มีรหัสผ่าน หรือ symbolic link จำกัด ZIP 20 MB, แต่ละไฟล์หลังแตก 10 MB, รวมหลังแตก 50 MB และ 500 คู่ ไม่เขียนไฟล์ที่แตกลง disk ไม่ต้องเพิ่ม migration ใหม่ ติดตั้ง dependency ด้วย `npm ci` ตาม lockfile และตั้ง reverse proxy ให้รับ multipart ได้ เช่น `client_max_body_size 25m;`
 
 ตัวอย่าง:
 

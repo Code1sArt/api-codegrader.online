@@ -25,7 +25,7 @@ import {
   UploadTestCaseDto,
   UploadTestCaseZipDto,
 } from './dto/problem.dto';
-import { ZIP_MAX_BYTES } from './test-case-zip';
+import { FILE_MAX_BYTES, ZIP_MAX_BYTES } from './test-case-zip';
 import { ProblemsService } from './problems.service';
 
 @ApiTags('Problems')
@@ -100,7 +100,7 @@ export class ProblemsController {
   @UseInterceptors(
     FileFieldsInterceptor(
       [{ name: 'inputFile', maxCount: 1 }, { name: 'solutionFile', maxCount: 1 }],
-      { limits: { fileSize: 2 * 1024 * 1024, files: 2 } },
+      { limits: { fileSize: FILE_MAX_BYTES, files: 2 } },
     ),
   )
   uploadTestCase(
