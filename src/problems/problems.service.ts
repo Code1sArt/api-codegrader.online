@@ -3,7 +3,7 @@ import { ProblemStatus, UserRole } from '@prisma/client';
 import type { AuthUser } from '../common/auth-user';
 import { readTestCaseZip } from './test-case-zip';
 import { PrismaService } from '../prisma/prisma.service';
-import { UploadTestCaseZipDto, AssignTestCaseDto, SubtaskDto, CreateProblemDto, UpdateProblemDto, UploadTestCaseDto } from './dto/problem.dto';
+import { SetTestCaseSamplesDto, UploadTestCaseZipDto, AssignTestCaseDto, SubtaskDto, CreateProblemDto, UpdateProblemDto, UploadTestCaseDto } from './dto/problem.dto';
 
 @Injectable()
 export class ProblemsService {
@@ -142,6 +142,19 @@ export class ProblemsService {
     }
     await this.prisma.subtask.delete({ where: { id: subtaskId } });
     return { deleted: true, id: subtaskId };
+  }
+
+  async setTestCaseSamples(problemId: string, dto: SetTestCaseSamplesDto) {
+    await this.ensureProblem(problemId);
+    return this.prisma.$transaction(async (tx) => {
+      const where = { problemId, id: { in: dto.testCaseIds } };
+      if (await tx.testCase.count({ where }) !== dto.testCaseIds.length) {
+        throw new BadRequestException('เทสที่เลือกบางรายการไม่อยู่ในโจทย์นี้ กรุณารีเฟรชแล้วเลือกใหม่');
+      }
+      const updated = await tx.testCase.updateMany({ where, data: { isSample: dto.isSample } });
+      if (updated.count !== dto.testCaseIds.length) throw new BadRequestException('รายการเทสเปลี่ยนแปลง กรุณารีเฟรชแล้วเลือกใหม่');
+      return { count: updated.count, isSample: dto.isSample };
+    });
   }
 
   async assignTestCase(problemId: string, testCaseId: string, dto: AssignTestCaseDto) {

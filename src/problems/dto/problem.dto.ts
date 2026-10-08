@@ -1,6 +1,8 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
+  ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -73,4 +75,10 @@ export class UploadTestCaseDto {
 
 export class UploadTestCaseZipDto {
   @IsString() @IsNotEmpty() subtaskId: string;
+}
+
+export class SetTestCaseSamplesDto {
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(1000) @ArrayUnique()
+  @IsString({ each: true }) @IsNotEmpty({ each: true }) testCaseIds: string[];
+  @IsBoolean() isSample: boolean;
 }

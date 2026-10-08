@@ -17,6 +17,7 @@ import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthUser } from '../common/auth-user';
 import { Roles } from '../common/roles.decorator';
 import {
+  SetTestCaseSamplesDto,
   SubtaskDto,
   AssignTestCaseDto,
   CreateProblemDto,
@@ -78,6 +79,12 @@ export class ProblemsController {
   @Delete(':id/subtasks/:subtaskId')
   removeSubtask(@Param('id') id: string, @Param('subtaskId') subtaskId: string) {
     return this.problems.removeSubtask(id, subtaskId);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/test-cases/samples')
+  setTestCaseSamples(@Param('id') id: string, @Body() dto: SetTestCaseSamplesDto) {
+    return this.problems.setTestCaseSamples(id, dto);
   }
 
   @Roles(UserRole.ADMIN)

@@ -60,6 +60,7 @@ Content-Type: application/json
 | POST | `/api/competitions` | Admin | สร้างการแข่งขัน |
 | PATCH | `/api/competitions/:id/status` | Admin | เปิด/ปิดการแข่งขัน |
 | POST | `/api/competitions/:id/join` | Any | สมัครการแข่งขัน |
+| PATCH | `/api/problems/:id/test-cases/samples` | Admin | ตั้งหลายเทสเป็นตัวอย่างหรือเทสลับ |
 | POST | `/api/problems/:id/test-cases/zip` | Admin | นำเข้า ZIP หลายคู่ .in / .sol เข้า subtask |
 | POST | `/api/problems/:id/subtasks` | Admin | เพิ่มกลุ่มทดสอบ |
 | PATCH | `/api/problems/:id/subtasks/:subtaskId` | Admin | แก้ไขกลุ่มทดสอบ |
@@ -144,3 +145,7 @@ curl -X POST http://localhost:3100/api/problems/PROBLEM_ID/test-cases/zip \
   -H "Authorization: Bearer TOKEN" \
   -F "subtaskId=SUBTASK_ID" -F "zipFile=@test-cases.zip"
 ```
+
+### Bulk sample visibility
+
+`PATCH /api/problems/:id/test-cases/samples` รับ `{ "testCaseIds": ["TEST_ID_1", "TEST_ID_2"], "isSample": true }` หรือ `false` ต้องเป็น Admin และทุก ID ต้องอยู่ในโจทย์ที่ระบุ ตรวจทั้งชุดแล้วแก้เฉพาะ `isSample` ใน transaction เดียว ไม่เปลี่ยนคะแนนหรือ subtask และไม่ใช้ scoringEditable lock เพราะเป็นการเปลี่ยนการแสดงผลตัวอย่าง รองรับโจทย์ที่เผยแพร่แล้ว ไม่ต้องเพิ่ม migration
