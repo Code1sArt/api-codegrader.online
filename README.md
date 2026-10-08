@@ -60,6 +60,7 @@ Content-Type: application/json
 | POST | `/api/competitions` | Admin | สร้างการแข่งขัน |
 | PATCH | `/api/competitions/:id/status` | Admin | เปิด/ปิดการแข่งขัน |
 | POST | `/api/competitions/:id/join` | Any | สมัครการแข่งขัน |
+| POST | `/api/problems/:id/test-cases/zip` | Admin | นำเข้า ZIP หลายคู่ .in / .sol เข้า subtask |
 | POST | `/api/problems/:id/subtasks` | Admin | เพิ่มกลุ่มทดสอบ |
 | PATCH | `/api/problems/:id/subtasks/:subtaskId` | Admin | แก้ไขกลุ่มทดสอบ |
 | DELETE | `/api/problems/:id/subtasks/:subtaskId` | Admin | ลบกลุ่มที่ไม่มีเทส |
@@ -129,3 +130,17 @@ Migration `20261007050000_add_subtasks` เพิ่มตาราง Subtask, 
 แก้กลุ่มและการจัดเทสได้เฉพาะฉบับร่างที่ไม่มี submission แล้วเท่านั้น ไม่ย้ายคำตอบเดิมเข้าเกณฑ์ใหม่ ผลกลุ่มถูกเก็บเป็น snapshot ใน submission: คะแนนเต็ม คะแนนที่ได้ สถานะ จำนวนผ่าน/ทั้งหมด เวลารวม และ peak memory ค่าที่ runner ไม่รายงานแสดงเป็น null การตรวจดำเนินต่อหลัง timeout / runtime / memory error เพื่อวัดกลุ่มอื่น แต่หยุดเมื่อ compile error ระบบยังซ่อน input/output ของเทสลับตามเดิม
 
 Leaderboard ใช้คะแนนรวมจากกลุ่มและคะแนนรายเทสตามน้ำหนักการแข่งขัน แล้วเรียงคะแนนมากที่สุด เวลาโปรแกรมรวมน้อยที่สุด และผลรวม peak memory ของแต่ละโจทย์น้อยที่สุด ไม่ใช้เวลาส่งเป็นเกณฑ์ Subtask ไม่ได้คำนวณ Big O อัตโนมัติ
+
+### Bulk ZIP import
+
+`POST /api/problems/:id/test-cases/zip` รับ multipart `subtaskId` และ `zipFile` เฉพาะ Admin และใช้กฎ scoringEditable เดียวกับ subtask จับคู่ `.in` / `.sol` ชื่อเดียวกันและโฟลเดอร์เดียวกัน (ไม่แยกตัวพิมพ์เล็ก/ใหญ่) รองรับโฟลเดอร์ย่อยและข้าม metadata ของ macOS เรียงชื่อแบบตัวเลข ต่อ position จากลำดับสูงสุด แล้วนำเข้าทุกเทสเป็น `isSample=false`, `score=0` คืน `{ count, subtaskId, startPosition }`
+
+ตรวจทุกคู่และ checksum ก่อนบันทึกใน transaction เดียว ปฏิเสธชื่อซ้ำ คู่ไม่ครบ ไฟล์ไม่ใช่ UTF-8 ไฟล์นอกสกุล .in/.sol ZIP เสียหาย มีรหัสผ่าน หรือ symbolic link จำกัด ZIP 20 MB, แต่ละไฟล์หลังแตก 2 MB, รวมหลังแตก 50 MB และ 500 คู่ ไม่เขียนไฟล์ที่แตกลง disk ไม่ต้องเพิ่ม migration ใหม่ ติดตั้ง dependency ด้วย `npm ci` ตาม lockfile และตั้ง reverse proxy ให้รับ multipart ได้ เช่น `client_max_body_size 25m;`
+
+ตัวอย่าง:
+
+```bash
+curl -X POST http://localhost:3100/api/problems/PROBLEM_ID/test-cases/zip \
+  -H "Authorization: Bearer TOKEN" \
+  -F "subtaskId=SUBTASK_ID" -F "zipFile=@test-cases.zip"
+```

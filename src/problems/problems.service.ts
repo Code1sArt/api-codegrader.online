@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProblemStatus, UserRole } from '@prisma/client';
 import type { AuthUser } from '../common/auth-user';
+import { readTestCaseZip } from './test-case-zip';
 import { PrismaService } from '../prisma/prisma.service';
-import { AssignTestCaseDto, SubtaskDto, CreateProblemDto, UpdateProblemDto, UploadTestCaseDto } from './dto/problem.dto';
+import { UploadTestCaseZipDto, AssignTestCaseDto, SubtaskDto, CreateProblemDto, UpdateProblemDto, UploadTestCaseDto } from './dto/problem.dto';
 
 @Injectable()
 export class ProblemsService {
@@ -102,6 +103,25 @@ export class ProblemsService {
     const expectedOutput = this.decodeUtf8(solutionFile.buffer, 'solutionFile');
     return this.prisma.testCase.create({
       data: { problemId, ...dto, subtaskId, score: subtaskId ? 0 : dto.score, input, expectedOutput },
+    });
+  }
+
+  async addTestCaseZip(problemId: string, dto: UploadTestCaseZipDto, file?: Express.Multer.File) {
+    await this.ensureScoringEditable(problemId);
+    await this.ensureSubtask(problemId, dto.subtaskId);
+    if (!file || !file.originalname.toLowerCase().endsWith('.zip')) throw new BadRequestException('แนบไฟล์ .zip ที่มีคู่ไฟล์ .in / .sol');
+    const cases = await readTestCaseZip(file.buffer);
+    // Validate the entire archive before writing, and serialize bulk imports on this problem.
+    return this.prisma.$transaction(async (tx) => {
+      const problem = await tx.problem.update({ where: { id: problemId }, data: { updatedAt: new Date() } });
+      if (problem.status !== ProblemStatus.DRAFT || await tx.submission.count({ where: { problemId } })) {
+        throw new BadRequestException('นำเข้า ZIP ได้เฉพาะโจทย์ฉบับร่างที่ยังไม่มีคำตอบ');
+      }
+      if (!await tx.subtask.findFirst({ where: { id: dto.subtaskId, problemId } })) throw new BadRequestException('Subtask does not belong to this problem');
+      const previous = await tx.testCase.aggregate({ where: { problemId }, _max: { position: true } });
+      const startPosition = (previous._max.position ?? 0) + 1;
+      await tx.testCase.createMany({ data: cases.map((test, index) => ({ ...test, problemId, subtaskId: dto.subtaskId, position: startPosition + index, score: 0, isSample: false })) });
+      return { count: cases.length, subtaskId: dto.subtaskId, startPosition };
     });
   }
 

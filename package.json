@@ -37,7 +37,8 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
@@ -48,6 +49,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^24.5.2",
     "@types/passport-jwt": "^4.0.1",
+    "@types/yauzl": "^3.4.0",
     "eslint": "^9.36.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.4.0",

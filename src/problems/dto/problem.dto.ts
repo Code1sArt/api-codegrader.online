@@ -70,3 +70,7 @@ export class UploadTestCaseDto {
   @IsBoolean()
   isSample = false;
 }
+
+export class UploadTestCaseZipDto {
+  @IsString() @IsNotEmpty() subtaskId: string;
+}

@@ -6,10 +6,11 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -22,7 +23,9 @@ import {
   SetProblemStatusDto,
   UpdateProblemDto,
   UploadTestCaseDto,
+  UploadTestCaseZipDto,
 } from './dto/problem.dto';
+import { ZIP_MAX_BYTES } from './test-case-zip';
 import { ProblemsService } from './problems.service';
 
 @ApiTags('Problems')
@@ -81,6 +84,14 @@ export class ProblemsController {
   @Patch(':id/test-cases/:testCaseId')
   assignTestCase(@Param('id') id: string, @Param('testCaseId') testCaseId: string, @Body() dto: AssignTestCaseDto) {
     return this.problems.assignTestCase(id, testCaseId, dto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Post(':id/test-cases/zip')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('zipFile', { limits: { fileSize: ZIP_MAX_BYTES, files: 1 } }))
+  uploadTestCaseZip(@Param('id') id: string, @Body() dto: UploadTestCaseZipDto, @UploadedFile() file?: Express.Multer.File) {
+    return this.problems.addTestCaseZip(id, dto, file);
   }
 
   @Roles(UserRole.ADMIN)
