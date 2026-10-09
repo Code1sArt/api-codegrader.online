@@ -11,7 +11,7 @@ describe('competition best score per problem', () => {
   });
 
   async function leaderboard(submissions: ReturnType<typeof submission>[]) {
-    const findFirst = jest.fn().mockResolvedValue({
+    const findFirst = jest.fn<Promise<unknown>, [Prisma.CompetitionFindFirstArgs]>().mockResolvedValue({
       id: 'c', deletedAt: null, startsAt,
       problems: [
         { problemId: 'p1', score: new Prisma.Decimal(200), problem: { maxScore: new Prisma.Decimal(100) } },
@@ -22,9 +22,9 @@ describe('competition best score per problem', () => {
     });
     const prisma = { competition: { findFirst } };
     const result = await new CompetitionsService(prisma as unknown as PrismaService).leaderboard('c');
-    expect(findFirst.mock.calls[0][0].include.submissions.where).toMatchObject({
+    expect(findFirst.mock.calls[0][0].include?.submissions).toMatchObject({ where: {
       scoreResetAt: null, problem: { deletedAt: null },
-    });
+    } });
     return result.entries[0];
   }
 
