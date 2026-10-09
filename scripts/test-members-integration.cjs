@@ -19,6 +19,7 @@ async function main() {
     url.pathname = `/${database}`;
     process.env.DATABASE_URL = url.toString();
     process.env.JWT_SECRET = "isolated-members-integration-test-secret";
+    process.env.GOOGLE_CLIENT_ID = "123456-example.apps.googleusercontent.com";
     const migrated = spawnSync(
       process.execPath,
       [require.resolve("prisma/build/index.js"), "migrate", "deploy"],
@@ -264,6 +265,24 @@ async function main() {
       isActive: false,
     });
     await request("/auth/me", "member", "GET", null, 401);
+    const { AuthService } = require("../dist/auth/auth.service");
+    const auth = app.get(AuthService);
+    Object.assign(auth, {
+      google: {
+        verifyIdToken: async () => ({
+          getPayload: () => ({
+            sub: member.googleSub,
+            email: member.email,
+            name: member.displayName,
+            email_verified: true,
+          }),
+        }),
+      },
+    });
+    await assert.rejects(
+      () => auth.loginWithGoogle("mock-google-token"),
+      /Account is disabled/,
+    );
     await request(
       "/auth/consent",
       "member",
@@ -275,6 +294,11 @@ async function main() {
       isActive: true,
     });
     await request("/auth/me", "member");
+    assert.equal(
+      (await auth.loginWithGoogle("mock-google-token")).user.id,
+      member.id,
+      "Unblocking restores Google sign-in to the original account",
+    );
     await request("/problems/p1", "other", "DELETE", null, 403);
     await request("/problems/p1", "admin", "DELETE");
     await request("/problems/p1", "member", "GET", null, 404);
@@ -312,7 +336,46 @@ async function main() {
     assert(retainedAttempt.problem.deletedAt);
     assert(retainedAttempt.competition.deletedAt);
 
+    await prisma.problem.update({
+      where: { id: "p2" },
+      data: { createdById: member.id },
+    });
+    await prisma.competition.update({
+      where: { id: c.id },
+      data: { createdById: member.id },
+    });
+    await prisma.competitionParticipant.create({
+      data: { competitionId: c.id, userId: member.id },
+    });
+    await prisma.testCase.create({
+      data: {
+        id: "result-test",
+        problemId: "p1",
+        name: "old",
+        input: "",
+        expectedOutput: "1",
+        score: 100,
+        position: 1,
+      },
+    });
+    await prisma.submissionResult.create({
+      data: {
+        submissionId: competitionAttempt.id,
+        testCaseId: "result-test",
+        status: "ACCEPTED",
+        score: 100,
+      },
+    });
     await request("/members/member", "admin", "DELETE");
+    assert.equal(
+      (await prisma.problem.findUnique({ where: { id: "p2" } })).createdById,
+      admin.id,
+    );
+    assert.equal(
+      (await prisma.competition.findUnique({ where: { id: c.id } }))
+        .createdById,
+      admin.id,
+    );
     await request("/auth/me", "member", "GET", null, 401);
     await request(
       "/members/member/status",
@@ -321,15 +384,79 @@ async function main() {
       { isActive: true },
       404,
     );
-    assert.equal((await request("/members?state=deleted", "admin")).total, 1);
-    assert.equal((await request("/members/member/history", "admin")).total, 3);
+
+    await request("/members/member/history", "admin", "GET", null, 404);
+    assert.equal(
+      await prisma.user.findUnique({ where: { id: member.id } }),
+      null,
+    );
     assert.equal(
       await prisma.submission.count({ where: { userId: member.id } }),
-      6,
-      "Soft deletion retains source and submission history",
+      0,
+    );
+    assert.equal(
+      await prisma.userAccessLog.count({ where: { userId: member.id } }),
+      0,
+    );
+    assert.equal(
+      await prisma.userUsage.count({ where: { userId: member.id } }),
+      0,
+    );
+    assert.equal(
+      await prisma.competitionParticipant.count({
+        where: { userId: member.id },
+      }),
+      0,
+    );
+    assert.equal(
+      await prisma.submissionResult.count({
+        where: { submissionId: competitionAttempt.id },
+      }),
+      0,
+    );
+    const newSession = await auth.loginWithGoogle("mock-google-token");
+    assert.notEqual(newSession.user.id, member.id);
+    assert.equal(newSession.user.requiresPrivacyAcceptance, true);
+    assert.equal(newSession.user.privacyAcceptedAt, null);
+    assert.equal(
+      await prisma.submission.count({ where: { userId: newSession.user.id } }),
+      0,
+    );
+    const newMe = await fetch(`${base}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${newSession.accessToken}` },
+    });
+    assert.equal(newMe.status, 200);
+    await request("/auth/me", "member", "GET", null, 401);
+    await createUser("legacy-deleted", {
+      isActive: false,
+      deletedAt: new Date(),
+    });
+    for (let run = 0; run < 2; run++) {
+      const cleanup = spawnSync(
+        process.execPath,
+        ["scripts/purge-deleted-members.cjs"],
+        { env: process.env, encoding: "utf8" },
+      );
+      assert.equal(
+        cleanup.status,
+        0,
+        "Legacy deletion cleanup must be idempotent",
+      );
+    }
+    assert.equal(
+      await prisma.user.findUnique({ where: { id: "legacy-deleted" } }),
+      null,
+    );
+    assert.equal(
+      (await prisma.user.findUnique({ where: { id: "blocked" } })).isActive,
+      false,
+    );
+    assert.equal(
+      await prisma.user.count({ where: { googleSub: member.googleSub } }),
+      1,
     );
     console.log(
-      "Members integration passed: migration, consent, authorization, blocking, retention, usage, leaderboard and soft deletion.",
+      "Members integration passed: migration, consent, authorization, blocking, retention, usage, leaderboard, permanent member deletion and re-registration.",
     );
   } finally {
     if (app) await app.close();

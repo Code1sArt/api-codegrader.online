@@ -93,7 +93,9 @@ The policy text/version and 90-day retention are defined in `src/members/privacy
 
 Express trusts only loopback reverse proxies by default. If the Plesk proxy connects from another address, set `TRUST_PROXY` to a comma-separated list of the actual trusted proxy IPs/CIDRs (e.g. `loopback,10.10.0.5/32`). Configure the trusted proxy to replace incoming forwarded headers. Do not trust arbitrary public clients; otherwise IP history can be spoofed. Without a trusted proxy, the recorded address is the direct peer.
 
-Problem, competition and member deletion uses soft deletion to preserve grading history and submitted source. Deleted accounts remain disabled and cannot sign in again using the same Google identity. Admin accounts cannot be deleted/blocked through the member UI.
+Problem and competition deletion preserves grading history. Member deletion permanently removes the account, submissions/source/results, participation, usage counters and IP history. The same Google identity can register a fresh account with no previous scores and must accept Privacy/Terms again. Blocked accounts remain registered and cannot sign in until an admin unblocks them. Shared problems/competitions created by a former admin are transferred to the deleting admin. Admin accounts cannot be deleted/blocked through the member UI.
+
+After updating older installations that used soft member deletion, run `node scripts/purge-deleted-members.cjs`. It permanently removes only members already marked deleted, protects admin accounts, and leaves blocked accounts intact. The cleanup is idempotent.
 
 Verification against an isolated temporary MySQL database:
 

@@ -13,8 +13,7 @@ import {
 import { PRIVACY_POLICY } from "./privacy";
 export class MemberQueryDto {
   @IsOptional() @IsString() @MaxLength(200) search?: string;
-  @IsOptional() @IsIn(["all", "active", "blocked", "deleted"]) state: string =
-    "all";
+  @IsOptional() @IsIn(["all", "active", "blocked"]) state: string = "all";
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000000) page = 1;
 }
 export class MemberStatusDto {

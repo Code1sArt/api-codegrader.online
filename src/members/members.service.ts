@@ -29,7 +29,7 @@ export class MembersService {
   ) {}
   async list(query: MemberQueryDto) {
     const where: Prisma.UserWhereInput = {
-      deletedAt: query.state === "deleted" ? { not: null } : null,
+      deletedAt: null,
       ...(query.state === "active"
         ? { isActive: true }
         : query.state === "blocked"
@@ -74,9 +74,14 @@ export class MembersService {
     ]);
     return { user, total, items, page, pageSize: 50 };
   }
-  private async manageable(id: string, actorId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user || user.deletedAt)
+  private async manageable(
+    id: string,
+    actorId: string,
+    db: Prisma.TransactionClient = this.prisma,
+    allowDeleted = false,
+  ) {
+    const user = await db.user.findUnique({ where: { id } });
+    if (!user || (user.deletedAt && !allowDeleted))
       throw new NotFoundException("Member not found");
     if (user.id === actorId || user.role === UserRole.ADMIN)
       throw new BadRequestException(
@@ -93,10 +98,20 @@ export class MembersService {
     });
   }
   async remove(id: string, actorId: string) {
-    await this.manageable(id, actorId);
-    await this.prisma.user.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false },
+    await this.prisma.$transaction(async (tx) => {
+      await this.manageable(id, actorId, tx, true);
+      // Keep shared teaching content; remove the member's personal attempts.
+      await tx.problem.updateMany({
+        where: { createdById: id },
+        data: { createdById: actorId },
+      });
+      await tx.competition.updateMany({
+        where: { createdById: id },
+        data: { createdById: actorId },
+      });
+      await tx.submission.deleteMany({ where: { userId: id } });
+      // Results, participation, access logs and usage cascade with their owners.
+      await tx.user.delete({ where: { id } });
     });
     return { deleted: true };
   }
