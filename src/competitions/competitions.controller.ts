@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -34,6 +34,10 @@ export class CompetitionsController {
   setStatus(@Param('id') id: string, @Body() dto: SetCompetitionStatusDto) {
     return this.competitions.setStatus(id, dto.status);
   }
+
+  @Roles(UserRole.ADMIN)
+  @Delete(':id')
+  remove(@Param('id') id: string) { return this.competitions.remove(id); }
 
   @Post(':id/join')
   join(@CurrentUser() user: AuthUser, @Param('id') id: string) {

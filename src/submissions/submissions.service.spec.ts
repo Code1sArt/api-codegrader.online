@@ -1,3 +1,4 @@
+import { UsageService } from '../members/usage.service';
 import { normalizeOutput } from './submissions.service';
 
 describe('normalizeOutput', () => {
@@ -34,7 +35,7 @@ function judgeSetup(statuses: S[]) {
   };
   const runner = { execute: jest.fn() };
   statuses.forEach((status) => runner.execute.mockResolvedValueOnce({ status, stdout: 'ok', stderr: '', message: '', compilerOutput: '', executionTimeMs: 10, memoryUsedKb: 64 }));
-  const service = new SubmissionsService(prisma as unknown as PrismaService, runner as unknown as PistonRunnerService);
+  const service = new SubmissionsService(prisma as unknown as PrismaService, runner as unknown as PistonRunnerService, { record: jest.fn(), countGraderRun: jest.fn() } as unknown as UsageService);
   return { service, prisma, runner, problem };
 }
 describe('subtask judging integration', () => {

@@ -1,3 +1,4 @@
+import { UsageService } from '../members/usage.service';
 import { ForbiddenException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { ROLES_KEY } from '../common/roles.decorator';
@@ -22,7 +23,7 @@ function setup() {
     },
     $transaction: (queries: Promise<unknown>[]) => Promise.all(queries),
   };
-  const service = new SubmissionsService(prisma as unknown as PrismaService, {} as PistonRunnerService);
+  const service = new SubmissionsService(prisma as unknown as PrismaService, {} as PistonRunnerService, { record: jest.fn(), countGraderRun: jest.fn() } as unknown as UsageService);
   return { service, prisma };
 }
 

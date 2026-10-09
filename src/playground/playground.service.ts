@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { UsageService } from '../members/usage.service';
 import { PistonRunnerService } from '../runner/piston-runner.service';
 import { SettingsService } from '../settings/settings.service';
 import { RunCodeDto } from './dto/run-code.dto';
@@ -13,12 +14,14 @@ export class PlaygroundService {
   constructor(
     private readonly settings: SettingsService,
     private readonly runner: PistonRunnerService,
+    private readonly usage: UsageService,
   ) {}
 
-  async run(dto: RunCodeDto) {
+  async run(dto: RunCodeDto, userId: string, ip?: string) {
     if (!(await this.settings.isPlaygroundEnabled())) {
       throw new ForbiddenException('ระบบ Playground ปิดใช้งานอยู่');
     }
+    await this.usage.record(userId, 'PLAYGROUND', ip);
     const result = await this.runner.execute(
       dto.language,
       dto.sourceCode,

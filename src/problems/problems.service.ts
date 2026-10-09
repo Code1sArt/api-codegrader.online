@@ -11,7 +11,7 @@ export class ProblemsService {
 
   list(user: AuthUser) {
     return this.prisma.problem.findMany({
-      where: user.role === UserRole.ADMIN ? {} : { status: ProblemStatus.PUBLISHED },
+      where: { deletedAt: null, ...(user.role === UserRole.ADMIN ? {} : { status: ProblemStatus.PUBLISHED }) },
       select: {
         id: true, slug: true, title: true, difficulty: true, allowedLanguages: true,
         timeLimitMs: true, memoryLimitMb: true, maxScore: true, status: true,
@@ -24,12 +24,13 @@ export class ProblemsService {
   async get(user: AuthUser, idOrSlug: string) {
     const problem = await this.prisma.problem.findFirst({
       where: {
+        deletedAt: null,
         OR: [{ id: idOrSlug }, { slug: idOrSlug }],
         ...(user.role === UserRole.ADMIN ? {} : { status: ProblemStatus.PUBLISHED }),
       },
       include: { subtasks: { orderBy: { position: 'asc' } }, testCases: { where: user.role === UserRole.ADMIN ? {} : { isSample: true }, orderBy: { position: 'asc' } } },
     });
-    if (!problem) throw new NotFoundException('Problem not found');
+    if (!problem || problem.deletedAt) throw new NotFoundException('Problem not found');
     if (user.role === UserRole.ADMIN) return {
       ...problem,
       scoringEditable: problem.status === ProblemStatus.DRAFT && !(await this.prisma.submission.count({ where: { problemId: problem.id } })),
@@ -66,7 +67,7 @@ export class ProblemsService {
     const problem = await this.prisma.problem.findUnique({
       where: { id }, include: { subtasks: true, testCases: { select: { score: true, subtaskId: true } } },
     });
-    if (!problem) throw new NotFoundException('Problem not found');
+    if (!problem || problem.deletedAt) throw new NotFoundException('Problem not found');
     if (status === ProblemStatus.PUBLISHED) {
       if (!problem.testCases.length) throw new BadRequestException('Add at least one test case before publishing');
       if (problem.subtasks.some((group) => !problem.testCases.some((test) => test.subtaskId === group.id))) {
@@ -181,6 +182,7 @@ export class ProblemsService {
   }
 
   async removeTestCase(problemId: string, testCaseId: string) {
+    await this.ensureProblem(problemId);
     if (await this.prisma.subtask.count({ where: { problemId } })) await this.ensureScoringEditable(problemId);
     const result = await this.prisma.testCase.deleteMany({ where: { id: testCaseId, problemId } });
     if (!result.count) throw new NotFoundException('Test case not found');
@@ -189,15 +191,13 @@ export class ProblemsService {
 
   async remove(id: string) {
     await this.ensureProblem(id);
-    const submissionCount = await this.prisma.submission.count({ where: { problemId: id } });
-    if (submissionCount) throw new BadRequestException('Archive a problem that already has submissions');
-    await this.prisma.problem.delete({ where: { id } });
+    await this.prisma.problem.update({ where: { id }, data: { deletedAt: new Date(), status: ProblemStatus.ARCHIVED } });
     return { deleted: true, id };
   }
 
   private async ensureProblem(id: string) {
     const problem = await this.prisma.problem.findUnique({ where: { id } });
-    if (!problem) throw new NotFoundException('Problem not found');
+    if (!problem || problem.deletedAt) throw new NotFoundException('Problem not found');
     return problem;
   }
 

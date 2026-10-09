@@ -17,6 +17,7 @@
     "db:studio": "prisma studio",
     "setup:local": "node scripts/setup-local-env.mjs",
     "test": "jest --runInBand",
+    "test:members:integration": "npm run build && node scripts/test-members-integration.cjs",
     "lint": "eslint \"{src,test}/**/*.ts\""
   },
   "dependencies": {

@@ -1,3 +1,4 @@
+import { UsageService } from '../members/usage.service';
 import { ForbiddenException } from '@nestjs/common';
 import { Language, SubmissionStatus } from '@prisma/client';
 import type { PistonRunnerService } from '../runner/piston-runner.service';
@@ -13,9 +14,10 @@ describe('PlaygroundService', () => {
     const service = new PlaygroundService(
       settings as unknown as SettingsService,
       runner as unknown as PistonRunnerService,
+      { record: jest.fn() } as unknown as UsageService,
     );
 
-    await expect(service.run(dto)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.run(dto, 'user')).rejects.toBeInstanceOf(ForbiddenException);
     expect(runner.execute).not.toHaveBeenCalled();
   });
 
@@ -34,9 +36,10 @@ describe('PlaygroundService', () => {
     const service = new PlaygroundService(
       settings as unknown as SettingsService,
       runner as unknown as PistonRunnerService,
+      { record: jest.fn() } as unknown as UsageService,
     );
 
-    await expect(service.run(dto)).resolves.toEqual(result);
+    await expect(service.run(dto, 'user')).resolves.toEqual(result);
     expect(runner.execute).toHaveBeenCalledWith(Language.PYTHON, dto.sourceCode, dto.stdin, 3_000, 128);
   });
 });

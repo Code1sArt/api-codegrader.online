@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/roles.decorator';
 import { SubmissionHistoryDto, ResetScoresDto } from './dto/submission-history.dto';
@@ -15,8 +16,8 @@ export class SubmissionsController {
   constructor(private readonly submissions: SubmissionsService) {}
 
   @Post()
-  submit(@CurrentUser() user: AuthUser, @Body() dto: CreateSubmissionDto) {
-    return this.submissions.submit(user, dto);
+  submit(@CurrentUser() user: AuthUser, @Body() dto: CreateSubmissionDto, @Req() request: Request) {
+    return this.submissions.submit(user, dto, request.ip);
   }
 
   @Get('me')

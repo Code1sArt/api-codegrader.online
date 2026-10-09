@@ -21,9 +21,9 @@ export class CompetitionsService {
 
   list(user: AuthUser) {
     return this.prisma.competition.findMany({
-      where: user.role === UserRole.ADMIN ? {} : { status: { in: [CompetitionStatus.PUBLISHED, CompetitionStatus.CLOSED] } },
+      where: { deletedAt: null, ...(user.role === UserRole.ADMIN ? {} : { status: { in: [CompetitionStatus.PUBLISHED, CompetitionStatus.CLOSED] } }) },
       include: {
-        _count: { select: { participants: true, problems: true } },
+        _count: { select: { participants: true, problems: { where: { problem: { deletedAt: null } } } } },
         participants: { where: { userId: user.sub }, select: { joinedAt: true } },
       },
       orderBy: { startsAt: 'desc' },
@@ -32,16 +32,17 @@ export class CompetitionsService {
 
   async get(user: AuthUser, id: string) {
     const competition = await this.prisma.competition.findFirst({
-      where: { id, ...(user.role === UserRole.ADMIN ? {} : { status: { not: CompetitionStatus.DRAFT } }) },
+      where: { id, deletedAt: null, ...(user.role === UserRole.ADMIN ? {} : { status: { not: CompetitionStatus.DRAFT } }) },
       include: {
         problems: {
+          where: { problem: { deletedAt: null } },
           include: { problem: { select: { id: true, slug: true, title: true, difficulty: true, allowedLanguages: true, timeLimitMs: true, memoryLimitMb: true } } },
           orderBy: { position: 'asc' },
         },
         participants: { where: { userId: user.sub }, select: { joinedAt: true } },
       },
     });
-    if (!competition) throw new NotFoundException('Competition not found');
+    if (!competition || competition.deletedAt) throw new NotFoundException('Competition not found');
     const started = competition.startsAt <= new Date();
     return {
       ...competition,
@@ -56,7 +57,7 @@ export class CompetitionsService {
     if (endsAt <= startsAt) throw new BadRequestException('endsAt must be after startsAt');
     const problemIds = dto.problems.map((item) => item.problemId);
     if (new Set(problemIds).size !== problemIds.length) throw new BadRequestException('Duplicate problem');
-    const count = await this.prisma.problem.count({ where: { id: { in: problemIds }, status: ProblemStatus.PUBLISHED } });
+    const count = await this.prisma.problem.count({ where: { id: { in: problemIds }, status: ProblemStatus.PUBLISHED, deletedAt: null } });
     if (count !== problemIds.length) throw new BadRequestException('Every competition problem must be published');
     return this.prisma.competition.create({
       data: {
@@ -72,19 +73,25 @@ export class CompetitionsService {
   }
 
   async setStatus(id: string, status: CompetitionStatus) {
-    const competition = await this.prisma.competition.findUnique({ where: { id }, include: { _count: { select: { problems: true } } } });
-    if (!competition) throw new NotFoundException('Competition not found');
+    const competition = await this.prisma.competition.findUnique({ where: { id }, include: { _count: { select: { problems: { where: { problem: { deletedAt: null } } } } } } });
+    if (!competition || competition.deletedAt) throw new NotFoundException('Competition not found');
     if (status === CompetitionStatus.PUBLISHED && !competition._count.problems) {
       throw new BadRequestException('Competition must contain at least one problem');
     }
     return this.prisma.competition.update({ where: { id }, data: { status } });
   }
 
+  async remove(id: string) {
+    const result = await this.prisma.competition.updateMany({ where: { id, deletedAt: null }, data: { deletedAt: new Date(), status: CompetitionStatus.CLOSED } });
+    if (!result.count) throw new NotFoundException('Competition not found');
+    return { deleted: true };
+  }
+
   async join(user: AuthUser, id: string) {
     const competition = await this.prisma.competition.findFirst({
-      where: { id, status: CompetitionStatus.PUBLISHED, endsAt: { gt: new Date() } },
+      where: { id, deletedAt: null, status: CompetitionStatus.PUBLISHED, endsAt: { gt: new Date() } },
     });
-    if (!competition) throw new BadRequestException('Competition is not open for joining');
+    if (!competition || competition.deletedAt) throw new BadRequestException('Competition is not open for joining');
     return this.prisma.competitionParticipant.upsert({
       where: { competitionId_userId: { competitionId: id, userId: user.sub } },
       update: {},
@@ -94,21 +101,22 @@ export class CompetitionsService {
 
   async leaderboard(id: string) {
     const competition = await this.prisma.competition.findFirst({
-      where: { id, status: { not: CompetitionStatus.DRAFT } },
+      where: { id, deletedAt: null, status: { not: CompetitionStatus.DRAFT } },
       include: {
-        problems: { include: { problem: { select: { maxScore: true } } } },
+        problems: { where: { problem: { deletedAt: null } }, include: { problem: { select: { maxScore: true } } } },
         participants: {
+          where: { user: { isActive: true, deletedAt: null } },
           include: {
             user: { select: { id: true, displayName: true, avatarUrl: true } },
           },
         },
         submissions: {
-          where: { status: { in: JUDGED_STATUSES }, scoreResetAt: null },
+          where: { status: { in: JUDGED_STATUSES }, scoreResetAt: null, problem: { deletedAt: null } },
           select: { userId: true, problemId: true, score: true, executionTimeMs: true, memoryUsedKb: true, submittedAt: true },
         },
       },
     });
-    if (!competition) throw new NotFoundException('Competition not found');
+    if (!competition || competition.deletedAt) throw new NotFoundException('Competition not found');
     const problemMap = new Map(competition.problems.map((item) => [item.problemId, item]));
     const entries = competition.participants.map((participant) => {
       const bestByProblem = new Map<string, (typeof competition.submissions)[number]>();

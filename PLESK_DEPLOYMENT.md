@@ -84,3 +84,21 @@ Later pushes to `main` deploy automatically. Pull requests only run CI. The
 server deploy script installs exact lockfile dependencies, generates Prisma
 Client, builds NestJS, applies database migrations, removes development
 dependencies, and requests a Passenger restart.
+
+## Member activity / privacy migration
+
+This release requires migration `20261009100000_members_privacy_activity` before the API restarts and before the frontend is published. The existing deploy script runs Prisma migrations automatically. It adds consent/version timestamps, deletion markers, lifetime usage counters, and access logs; existing members will see the Privacy/Terms popup on their next visit.
+
+The policy text/version and 90-day retention are defined in `src/members/privacy.ts`. Log collection begins after acceptance. IP events cover sign-in, submission and Playground runs; grader-run counters count runner invocations per test or Playground run, including failures. Counters are not inferred from historic submissions. Expired logs are hidden immediately and removed on startup and hourly while the API is running. Application/database backups must have their own retention managed by the operator.
+
+Express trusts only loopback reverse proxies by default. If the Plesk proxy connects from another address, set `TRUST_PROXY` to a comma-separated list of the actual trusted proxy IPs/CIDRs (e.g. `loopback,10.10.0.5/32`). Configure the trusted proxy to replace incoming forwarded headers. Do not trust arbitrary public clients; otherwise IP history can be spoofed. Without a trusted proxy, the recorded address is the direct peer.
+
+Problem, competition and member deletion uses soft deletion to preserve grading history and submitted source. Deleted accounts remain disabled and cannot sign in again using the same Google identity. Admin accounts cannot be deleted/blocked through the member UI.
+
+Verification against an isolated temporary MySQL database:
+
+```bash
+npm run test:members:integration
+```
+
+The configured database account needs CREATE/DROP DATABASE privileges. The script creates a uniquely named test database, applies all migrations there, checks HTTP consent/role guards, immediate blocking/deletion, counters, retention and score aggregation, and drops only that temporary database on completion. It does not migrate the database named in `DATABASE_URL` or invoke Piston.

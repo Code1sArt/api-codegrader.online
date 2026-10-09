@@ -1,3 +1,5 @@
+import { MembersModule } from './members/members.module';
+import { PrivacyGuard } from './common/privacy.guard';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -18,6 +20,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    MembersModule,
     AuthModule,
     ProblemsModule,
     CompetitionsModule,
@@ -29,6 +32,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PrivacyGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })

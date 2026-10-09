@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma, CompetitionStatus, Language, ProblemStatus, SubmissionStatus, UserRole } from '@prisma/client';
 import type { AuthUser } from '../common/auth-user';
+import { UsageService } from '../members/usage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PistonRunnerService } from '../runner/piston-runner.service';
 import { scoreSubtasks, type JudgedTest } from './subtask-scoring';
@@ -10,7 +11,7 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 export class SubmissionsService implements OnModuleInit {
   private readonly processing = new Set<string>();
 
-  constructor(private readonly prisma: PrismaService, private readonly runner: PistonRunnerService) {}
+  constructor(private readonly prisma: PrismaService, private readonly runner: PistonRunnerService, private readonly usage: UsageService) {}
 
   async onModuleInit() {
     const stale = await this.prisma.submission.findMany({
@@ -23,9 +24,9 @@ export class SubmissionsService implements OnModuleInit {
     }
   }
 
-  async submit(user: AuthUser, dto: CreateSubmissionDto) {
+  async submit(user: AuthUser, dto: CreateSubmissionDto, ip?: string) {
     const problem = await this.prisma.problem.findFirst({
-      where: { id: dto.problemId, status: ProblemStatus.PUBLISHED },
+      where: { id: dto.problemId, status: ProblemStatus.PUBLISHED, deletedAt: null },
       include: { testCases: { select: { id: true } } },
     });
     if (!problem) throw new NotFoundException('Published problem not found');
@@ -34,6 +35,7 @@ export class SubmissionsService implements OnModuleInit {
     if (!problem.testCases.length) throw new BadRequestException('Problem has no test cases');
 
     if (dto.competitionId) await this.assertCompetitionEntry(user.sub, dto.competitionId, problem.id);
+    await this.usage.record(user.sub, 'SUBMISSION', ip);
     const submission = await this.prisma.submission.create({
       data: {
         userId: user.sub,
@@ -55,7 +57,7 @@ export class SubmissionsService implements OnModuleInit {
       select: {
         id: true, language: true, status: true, score: true, passedCount: true, totalCount: true,
         executionTimeMs: true, memoryUsedKb: true, submittedAt: true, judgedAt: true,
-        problem: { select: { id: true, slug: true, title: true, maxScore: true } },
+        problem: { select: problemInfo },
         competitionId: true, scoreResetAt: true,
       },
       orderBy: { submittedAt: 'desc' },
@@ -119,7 +121,8 @@ export class SubmissionsService implements OnModuleInit {
     const submission = await this.prisma.submission.findUnique({
       where: { id },
       include: {
-        problem: { select: { id: true, slug: true, title: true, maxScore: true } },
+        problem: { select: problemInfo },
+        competition: { select: { id: true, deletedAt: true } },
         results: { include: { testCase: { select: { name: true, position: true, isSample: true, subtaskId: true } } }, orderBy: { testCase: { position: 'asc' } } },
       },
     });
@@ -149,7 +152,7 @@ export class SubmissionsService implements OnModuleInit {
     const competition = await this.prisma.competition.findFirst({
       where: {
         id: competitionId,
-        status: CompetitionStatus.PUBLISHED,
+        status: CompetitionStatus.PUBLISHED, deletedAt: null,
         startsAt: { lte: now },
         endsAt: { gte: now },
         participants: { some: { userId } },
@@ -184,6 +187,7 @@ export class SubmissionsService implements OnModuleInit {
         if (testCase.subtaskId && failedGroups.has(testCase.subtaskId)) continue;
         let run: Omit<Awaited<ReturnType<PistonRunnerService['execute']>>, 'status'> & { status: SubmissionStatus };
         try {
+          await this.usage.countGraderRun(submission.userId);
           run = await this.runner.execute(
             submission.language,
             submission.sourceCode,
@@ -259,7 +263,7 @@ export function normalizeOutput(value: string) {
   return value.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd()).join('\n').trim();
 }
 
-const problemInfo = { id: true, slug: true, title: true, maxScore: true } as const;
+const problemInfo = { id: true, slug: true, title: true, maxScore: true, deletedAt: true } as const;
 function effectiveScore<T extends { score: unknown; scoreResetAt: Date | null }>(submission: T) {
   return { ...submission, score: submission.scoreResetAt ? 0 : submission.score };
 }

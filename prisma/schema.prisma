@@ -50,6 +50,11 @@ model User {
   avatarUrl           String?                  @db.Text
   role                UserRole                 @default(USER)
   isActive            Boolean                  @default(true)
+  deletedAt           DateTime?
+  privacyVersion      String?                  @db.VarChar(80)
+  privacyAcceptedAt   DateTime?
+  usage               UserUsage?
+  accessLogs          UserAccessLog[]
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
   submissions         Submission[]
@@ -73,6 +78,7 @@ model Problem {
   maxScore          Decimal              @default(100) @db.Decimal(8, 2)
   status            ProblemStatus        @default(DRAFT)
   createdById       String
+  deletedAt         DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   createdBy         User                 @relation("ProblemCreator", fields: [createdById], references: [id])
@@ -126,6 +132,7 @@ model Competition {
   endsAt       DateTime
   status       CompetitionStatus        @default(DRAFT)
   createdById  String
+  deletedAt    DateTime?
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt
   createdBy    User                     @relation("CompetitionCreator", fields: [createdById], references: [id])
@@ -209,4 +216,32 @@ model SystemSetting {
   id                String   @id
   playgroundEnabled Boolean  @default(false)
   updatedAt         DateTime @updatedAt
+}
+
+model UserUsage {
+  userId         String   @id
+  loginCount     Int      @default(0)
+  submissionCount Int     @default(0)
+  playgroundCount Int     @default(0)
+  graderRunCount Int      @default(0)
+  lastUsedAt     DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AccessEventKind {
+  LOGIN
+  SUBMISSION
+  PLAYGROUND
+}
+
+model UserAccessLog {
+  id        String          @id @default(cuid())
+  userId    String
+  kind      AccessEventKind
+  ip        String?         @db.VarChar(45)
+  createdAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }

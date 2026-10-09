@@ -3,12 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import type { Express } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
   app.setGlobalPrefix('api');
+  const server = app.getHttpAdapter().getInstance() as Express;
+  server.set('trust proxy', config.get<string>('TRUST_PROXY')?.split(',').map(value => value.trim()).filter(Boolean) ?? 'loopback');
   app.use(helmet());
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
