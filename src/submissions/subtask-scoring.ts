@@ -21,14 +21,15 @@ export function scoreSubtasks(tests: Test[], groups: Group[], results: JudgedTes
     const status = accepted ? SubmissionStatus.ACCEPTED
       : runs.find((run) => run && run.status !== SubmissionStatus.ACCEPTED)?.status
         ?? (stoppedStatus !== SubmissionStatus.ACCEPTED ? stoppedStatus : undefined) ?? SubmissionStatus.SYSTEM_ERROR;
-    const executionTimeMs = runs.length && runs.every((run) => run?.executionTimeMs != null)
-      ? runs.reduce((sum, run) => sum + run!.executionTimeMs!, 0) : null;
-    const memoryUsedKb = runs.length && runs.every((run) => run?.memoryUsedKb != null)
-      ? Math.max(...runs.map((run) => run!.memoryUsedKb!)) : null;
+    const executedRuns = runs.filter((run): run is JudgedTest => Boolean(run));
+    const executionTimeMs = executedRuns.length > 0 && executedRuns.every((run) => run?.executionTimeMs != null)
+      ? executedRuns.reduce((sum, run) => sum + run.executionTimeMs!, 0) : null;
+    const memoryUsedKb = executedRuns.length > 0 && executedRuns.every((run) => run?.memoryUsedKb != null)
+      ? Math.max(...executedRuns.map((run) => run.memoryUsedKb!)) : null;
     return {
       subtaskId: group.id, name: group.name, description: group.description,
       maxScore: Number(group.score), score: accepted ? Number(group.score) : 0,
-      status, passedCount, totalCount: members.length, executionTimeMs, memoryUsedKb,
+      status, passedCount, totalCount: members.length, executedCount: executedRuns.length, skippedCount: members.length - executedRuns.length, executionTimeMs, memoryUsedKb,
     };
   });
   const individualScore = tests.filter((test) => !test.subtaskId).reduce((sum, test) =>

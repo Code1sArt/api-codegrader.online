@@ -103,7 +103,7 @@ export class CompetitionsService {
           },
         },
         submissions: {
-          where: { status: { in: JUDGED_STATUSES } },
+          where: { status: { in: JUDGED_STATUSES }, scoreResetAt: null },
           select: { userId: true, problemId: true, score: true, executionTimeMs: true, memoryUsedKb: true, submittedAt: true },
         },
       },

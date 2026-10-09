@@ -177,6 +177,7 @@ model Submission {
   systemMessage   String?            @db.Text
   submittedAt     DateTime           @default(now())
   judgedAt        DateTime?
+  scoreResetAt    DateTime?
   user            User               @relation(fields: [userId], references: [id])
   problem         Problem            @relation(fields: [problemId], references: [id])
   competition     Competition?       @relation(fields: [competitionId], references: [id])

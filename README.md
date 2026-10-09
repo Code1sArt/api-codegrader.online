@@ -149,3 +149,18 @@ curl -X POST http://localhost:3100/api/problems/PROBLEM_ID/test-cases/zip \
 ### Bulk sample visibility
 
 `PATCH /api/problems/:id/test-cases/samples` รับ `{ "testCaseIds": ["TEST_ID_1", "TEST_ID_2"], "isSample": true }` หรือ `false` ต้องเป็น Admin และทุก ID ต้องอยู่ในโจทย์ที่ระบุ ตรวจทั้งชุดแล้วแก้เฉพาะ `isSample` ใน transaction เดียว ไม่เปลี่ยนคะแนนหรือ subtask และไม่ใช้ scoringEditable lock เพราะเป็นการเปลี่ยนการแสดงผลตัวอย่าง รองรับโจทย์ที่เผยแพร่แล้ว ไม่ต้องเพิ่ม migration
+
+## Piston inputs and subtask judging
+
+The judge runs subtasks in their configured order and stops a group on its first failed test, then moves to the next group. Compilation errors stop the entire submission. Groups receive their full score only when every member passes; skipped tests never earn credit. Stored group results include executedCount and skippedCount, and timings cover only tests actually executed. Runner infrastructure errors remain SYSTEM_ERROR and preserve already-earned scores; they must not be treated as student time or memory failures.
+
+The production Piston image uses body-parser's default JSON request limit. Large imported inputs can therefore fail with PayloadTooLargeError before the student program runs. On the production host, run `sudo bash scripts/fix-piston-input-limit.sh` to back up the current compose configuration and running image's index.js, apply a bounded 64 MB JSON limit (to cover JSON escaping of 10 MB test inputs), fix stdin to flush buffered data using end(stdin) instead of immediately destroying the stream, and mount both patched files read-only. This recreates only the Piston API container, preserving the package volume and all existing resource/security limits. The patch must be reviewed again when upgrading the Piston image.
+
+## Grouped history and score reset API
+
+- `GET /submissions/me/problems`: all submitted problems, counts, best non-reset score and latest attempt.
+- `GET /submissions/me/problems/:problemId?page=1`: only the authenticated user's history, newest first, 50 attempts per page.
+- ADMIN: `GET /submissions/admin/problems`, `GET /submissions/admin/problems/:problemId`, and `GET /submissions/admin/problems/:problemId/users/:userId?page=1`. Respondents rank by highest non-reset score; source code is available through the existing owner/admin detail endpoint.
+- ADMIN: `POST /submissions/admin/problems/:problemId/reset`, body `{}` for all respondents or `{ "userId": "..." }` for one respondent. This marks existing attempts with scoreResetAt; no history or code is deleted. History/details return zero points for reset attempts, including subtask/test scores. Leaderboards exclude reset attempts. New attempts count normally and in-flight judging does not clear the reset marker.
+
+Run `npm run db:deploy` and regenerate Prisma Client for migration `20261009090000_submission_score_reset` before releasing the new frontend.

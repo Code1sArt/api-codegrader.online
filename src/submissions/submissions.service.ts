@@ -49,18 +49,70 @@ export class SubmissionsService implements OnModuleInit {
     return submission;
   }
 
-  listMine(user: AuthUser) {
-    return this.prisma.submission.findMany({
+  async listMine(user: AuthUser) {
+    const rows = await this.prisma.submission.findMany({
       where: { userId: user.sub },
       select: {
         id: true, language: true, status: true, score: true, passedCount: true, totalCount: true,
         executionTimeMs: true, memoryUsedKb: true, submittedAt: true, judgedAt: true,
         problem: { select: { id: true, slug: true, title: true, maxScore: true } },
-        competitionId: true,
+        competitionId: true, scoreResetAt: true,
       },
       orderBy: { submittedAt: 'desc' },
       take: 100,
     });
+    return rows.map(effectiveScore);
+  }
+
+  async problemSummaries(userId?: string) {
+    const where = userId ? { userId } : {};
+    const [counts, scores] = await Promise.all([
+      this.prisma.submission.groupBy({ by: ['problemId', 'userId'], where, _count: { _all: true }, _max: { submittedAt: true } }),
+      this.prisma.submission.groupBy({ by: ['problemId'], where: { ...where, scoreResetAt: null }, _max: { score: true } }),
+    ]);
+    const problems = await this.prisma.problem.findMany({ where: { id: { in: [...new Set(counts.map(row => row.problemId))] } }, select: problemInfo });
+    return problems.map(problem => {
+      const rows = counts.filter(row => row.problemId === problem.id);
+      return { problem, submissionCount: rows.reduce((sum, row) => sum + row._count._all, 0), userCount: rows.length,
+        bestScore: Number(scores.find(row => row.problemId === problem.id)?._max.score ?? 0),
+        lastSubmittedAt: rows.reduce((latest, row) => row._max.submittedAt && row._max.submittedAt > latest ? row._max.submittedAt : latest, new Date(0)) };
+    }).sort((a, b) => b.lastSubmittedAt.getTime() - a.lastSubmittedAt.getTime());
+  }
+
+  async respondents(problemId: string) {
+    const problem = await this.prisma.problem.findUnique({ where: { id: problemId }, select: problemInfo });
+    if (!problem) throw new NotFoundException('Problem not found');
+    const [counts, scores] = await Promise.all([
+      this.prisma.submission.groupBy({ by: ['userId'], where: { problemId }, _count: { _all: true }, _max: { submittedAt: true } }),
+      this.prisma.submission.groupBy({ by: ['userId'], where: { problemId, scoreResetAt: null }, _max: { score: true } }),
+    ]);
+    const users = await this.prisma.user.findMany({ where: { id: { in: counts.map(row => row.userId) } }, select: { id: true, displayName: true, avatarUrl: true } });
+    const respondents = users.map(user => ({ user, submissionCount: counts.find(row => row.userId === user.id)!._count._all,
+      lastSubmittedAt: counts.find(row => row.userId === user.id)!._max.submittedAt,
+      bestScore: Number(scores.find(row => row.userId === user.id)?._max.score ?? 0) }));
+    respondents.sort((a, b) => b.bestScore - a.bestScore || a.user.displayName.localeCompare(b.user.displayName) || a.user.id.localeCompare(b.user.id));
+    return { problem, respondents };
+  }
+
+  async history(problemId: string, userId: string, page = 1) {
+    const problem = await this.prisma.problem.findUnique({ where: { id: problemId }, select: problemInfo });
+    if (!problem) throw new NotFoundException('Problem not found');
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, displayName: true, avatarUrl: true } });
+    if (!user) throw new NotFoundException('User not found');
+    const where = { problemId, userId };
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.submission.count({ where }),
+      this.prisma.submission.findMany({ where, select: { id: true, language: true, status: true, score: true, scoreResetAt: true,
+        passedCount: true, totalCount: true, executionTimeMs: true, memoryUsedKb: true, submittedAt: true, judgedAt: true, competitionId: true, problem: { select: problemInfo } },
+        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * 50, take: 50 }),
+    ]);
+    return { problem, user, items: rows.map(effectiveScore), total, page, pageSize: 50 };
+  }
+
+  async resetScores(problemId: string, userId?: string) {
+    if (!await this.prisma.problem.count({ where: { id: problemId } })) throw new NotFoundException('Problem not found');
+    const result = await this.prisma.submission.updateMany({ where: { problemId, ...(userId ? { userId } : {}), scoreResetAt: null }, data: { scoreResetAt: new Date() } });
+    return { resetCount: result.count };
   }
 
   async get(user: AuthUser, id: string) {
@@ -74,13 +126,15 @@ export class SubmissionsService implements OnModuleInit {
     if (!submission) throw new NotFoundException('Submission not found');
     if (submission.userId !== user.sub && user.role !== UserRole.ADMIN) throw new ForbiddenException();
     return {
-      ...submission,
+      ...effectiveScore(submission),
+      subtaskResults: submission.scoreResetAt && Array.isArray(submission.subtaskResults)
+        ? submission.subtaskResults.map(group => group && typeof group === 'object' && !Array.isArray(group) ? { ...group, score: 0 } : group) : submission.subtaskResults,
       results: submission.results.map((result) => ({
         id: result.id,
         subtaskId: result.testCase.subtaskId,
         name: result.testCase.isSample ? result.testCase.name : `Test ${result.testCase.position}`,
         status: result.status,
-        score: result.score,
+        score: submission.scoreResetAt ? 0 : result.score,
         executionTimeMs: result.executionTimeMs,
         memoryUsedKb: result.memoryUsedKb,
         ...(user.role === UserRole.ADMIN || result.testCase.isSample
@@ -120,15 +174,28 @@ export class SubmissionsService implements OnModuleInit {
       let maxMemory = 0;
       let finalStatus: SubmissionStatus = SubmissionStatus.ACCEPTED;
       let compilerOutput = '';
+      const failedGroups = new Set<string>();
+      const systemMessages: string[] = [];
+      const groupOrder = new Map(submission.problem.subtasks.map((group, index) => [group.id, index]));
+      const orderedTests = [...submission.problem.testCases].sort((a, b) =>
+        (groupOrder.get(a.subtaskId ?? '') ?? groupOrder.size) - (groupOrder.get(b.subtaskId ?? '') ?? groupOrder.size));
 
-      for (const testCase of submission.problem.testCases) {
-        const run = await this.runner.execute(
-          submission.language,
-          submission.sourceCode,
-          testCase.input,
-          submission.problem.timeLimitMs,
-          submission.problem.memoryLimitMb,
-        );
+      for (const testCase of orderedTests) {
+        if (testCase.subtaskId && failedGroups.has(testCase.subtaskId)) continue;
+        let run: Omit<Awaited<ReturnType<PistonRunnerService['execute']>>, 'status'> & { status: SubmissionStatus };
+        try {
+          run = await this.runner.execute(
+            submission.language,
+            submission.sourceCode,
+            testCase.input,
+            submission.problem.timeLimitMs,
+            submission.problem.memoryLimitMb,
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown runner error';
+          systemMessages.push(message);
+          run = { status: SubmissionStatus.SYSTEM_ERROR, stdout: '', stderr: '', compilerOutput: '', message, executionTimeMs: null, memoryUsedKb: null };
+        }
         let resultStatus: SubmissionStatus = run.status;
         if (resultStatus === SubmissionStatus.ACCEPTED && normalizeOutput(run.stdout) !== normalizeOutput(testCase.expectedOutput)) {
           resultStatus = SubmissionStatus.WRONG_ANSWER;
@@ -155,15 +222,18 @@ export class SubmissionsService implements OnModuleInit {
           finalStatus = resultStatus;
           break;
         }
+        if (!passed && testCase.subtaskId) failedGroups.add(testCase.subtaskId);
         if (!passed && finalStatus === SubmissionStatus.ACCEPTED) finalStatus = resultStatus;
       }
       const { score, subtaskResults } = scoreSubtasks(submission.problem.testCases, submission.problem.subtasks, judgedTests, finalStatus);
       if (passedCount === submission.problem.testCases.length) finalStatus = SubmissionStatus.ACCEPTED;
       else if (score > 0) finalStatus = SubmissionStatus.PARTIAL;
+      if (systemMessages.length) finalStatus = SubmissionStatus.SYSTEM_ERROR;
       await this.prisma.submission.update({
         where: { id },
         data: {
           status: finalStatus, score, passedCount, subtaskResults,
+          systemMessage: systemMessages.length ? [...new Set(systemMessages)].join("\n").slice(0, 2000) : null,
           executionTimeMs: judgedTests.length && judgedTests.every((run) => run.executionTimeMs !== null) ? totalTime : null,
           memoryUsedKb: judgedTests.length && judgedTests.every((run) => run.memoryUsedKb !== null) ? maxMemory : null,
           compilerOutput: compilerOutput || null,
@@ -187,4 +257,9 @@ export class SubmissionsService implements OnModuleInit {
 
 export function normalizeOutput(value: string) {
   return value.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd()).join('\n').trim();
+}
+
+const problemInfo = { id: true, slug: true, title: true, maxScore: true } as const;
+function effectiveScore<T extends { score: unknown; scoreResetAt: Date | null }>(submission: T) {
+  return { ...submission, score: submission.scoreResetAt ? 0 : submission.score };
 }

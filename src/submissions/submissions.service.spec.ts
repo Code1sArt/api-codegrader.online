@@ -38,12 +38,29 @@ function judgeSetup(statuses: S[]) {
   return { service, prisma, runner, problem };
 }
 describe('subtask judging integration', () => {
-  it('continues after timeout and persists zero score for the incomplete group', async () => {
+  it('skips the remaining tests in a failed subtask', async () => {
     const { service, prisma, runner } = judgeSetup([S.ACCEPTED, S.TIME_LIMIT_EXCEEDED, S.ACCEPTED]);
     await service['judge']('submission');
-    expect(runner.execute).toHaveBeenCalledTimes(3);
-    expect(prisma.submission.update.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: S.PARTIAL, score: 20, passedCount: 2, executionTimeMs: 30, memoryUsedKb: 64, subtaskResults: [{ score: 20, status: S.ACCEPTED }, { score: 0, status: S.TIME_LIMIT_EXCEEDED }] } });
+    expect(runner.execute).toHaveBeenCalledTimes(2);
+    expect(prisma.submission.update.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: S.PARTIAL, score: 20, passedCount: 1, executionTimeMs: 20, memoryUsedKb: 64, subtaskResults: [{ score: 20, status: S.ACCEPTED }, { score: 0, status: S.TIME_LIMIT_EXCEEDED }] } });
     expect(prisma.submissionResult.create.mock.calls.every(([args]) => args.data.score === 0)).toBe(true);
+  });
+  it.each([S.WRONG_ANSWER, S.RUNTIME_ERROR, S.MEMORY_LIMIT_EXCEEDED, S.TIME_LIMIT_EXCEEDED])('continues to the next subtask after %s, even with interleaved tests', async (failure) => {
+    const { service, prisma, runner, problem } = judgeSetup([failure, S.ACCEPTED]);
+    problem.testCases[0].subtaskId = 'large';
+    problem.testCases[1].subtaskId = 'small';
+    problem.testCases[2].subtaskId = 'small';
+    await service['judge']('submission');
+    expect(runner.execute).toHaveBeenCalledTimes(2);
+    expect(runner.execute.mock.calls.map((call: unknown[]) => call[2])).toEqual(['large1', 'small']);
+    expect(prisma.submission.update.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: S.PARTIAL, score: 80, subtaskResults: [{ score: 0, status: failure, executedCount: 1, skippedCount: 1 }, { score: 80, status: S.ACCEPTED }] } });
+  });
+  it('preserves completed group scores when a later group encounters an infrastructure error', async () => {
+    const { service, prisma, runner } = judgeSetup([S.ACCEPTED]);
+    runner.execute.mockRejectedValueOnce(new Error('PayloadTooLargeError'));
+    await service['judge']('submission');
+    expect(runner.execute).toHaveBeenCalledTimes(2);
+    expect(prisma.submission.update.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: S.SYSTEM_ERROR, score: 20, systemMessage: 'PayloadTooLargeError', subtaskResults: [{ score: 20 }, { status: S.SYSTEM_ERROR, score: 0, skippedCount: 1 }] } });
   });
   it('grants full score when all groups pass and clears stale results before judging', async () => {
     const { service, prisma } = judgeSetup([S.ACCEPTED, S.ACCEPTED, S.ACCEPTED]);
