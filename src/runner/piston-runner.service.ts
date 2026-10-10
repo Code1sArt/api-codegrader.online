@@ -30,8 +30,8 @@ export class PistonRunnerService {
 
   constructor(private readonly config: ConfigService) {}
 
-  async execute(language: Language, sourceCode: string, stdin: string, timeLimitMs: number, memoryLimitMb: number) {
-    const release = await this.acquire();
+  async execute(language: Language, sourceCode: string, stdin: string, timeLimitMs: number, memoryLimitMb: number, queueTimeoutMs?: number) {
+    const release = await this.acquire(queueTimeoutMs);
     try {
       return await this.request(language, sourceCode, stdin, timeLimitMs, memoryLimitMb);
     } finally {
@@ -93,13 +93,24 @@ export class PistonRunnerService {
     };
   }
 
-  private async acquire() {
+  private async acquire(queueTimeoutMs?: number) {
     const max = positiveInteger(this.config.get<string | number>('RUNNER_MAX_CONCURRENCY'), 2);
     if (this.active < max) {
       this.active += 1;
       return () => this.release();
     }
-    await new Promise<void>((resolve) => this.waiters.push(resolve));
+    await new Promise<void>((resolve, reject) => {
+      const next = () => {
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      const timer = queueTimeoutMs === undefined ? undefined : setTimeout(() => {
+        const index = this.waiters.indexOf(next);
+        if (index !== -1) this.waiters.splice(index, 1);
+        reject(new ServiceUnavailableException('คิวรันโค้ดเต็ม กรุณารอสักครู่แล้วลองอีกครั้ง'));
+      }, queueTimeoutMs);
+      this.waiters.push(next);
+    });
     return () => this.release();
   }
 

@@ -14,11 +14,15 @@ import { PlaygroundModule } from './playground/playground.module';
 import { RolesGuard } from './common/roles.guard';
 import { SettingsModule } from './settings/settings.module';
 import { SubmissionsModule } from './submissions/submissions.module';
+import { requestTracker } from './common/request-tracker';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 100 }],
+      getTracker: requestTracker,
+    }),
     PrismaModule,
     MembersModule,
     AuthModule,
@@ -30,8 +34,8 @@ import { SubmissionsModule } from './submissions/submissions.module';
   ],
   controllers: [HealthController],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: PrivacyGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

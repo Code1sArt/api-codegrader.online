@@ -40,6 +40,6 @@ describe('PlaygroundService', () => {
     );
 
     await expect(service.run(dto, 'user')).resolves.toEqual(result);
-    expect(runner.execute).toHaveBeenCalledWith(Language.PYTHON, dto.sourceCode, dto.stdin, 3_000, 128);
+    expect(runner.execute).toHaveBeenCalledWith(Language.PYTHON, dto.sourceCode, dto.stdin, 3_000, 128, 5_000);
   });
 });

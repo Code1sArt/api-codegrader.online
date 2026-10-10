@@ -28,6 +28,7 @@ export class PlaygroundService {
       dto.stdin,
       PLAYGROUND_TIME_LIMIT_MS,
       PLAYGROUND_MEMORY_LIMIT_MB,
+      5_000,
     );
     return {
       ...result,

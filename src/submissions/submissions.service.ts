@@ -1,4 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { positiveInteger } from '../common/config-number';
 import { Prisma, CompetitionStatus, Language, ProblemStatus, SubmissionStatus, UserRole } from '@prisma/client';
 import type { AuthUser } from '../common/auth-user';
 import { UsageService } from '../members/usage.service';
@@ -10,17 +12,22 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 @Injectable()
 export class SubmissionsService implements OnModuleInit {
   private readonly processing = new Set<string>();
+  private readonly pending: string[] = [];
+  private readonly scheduled = new Set<string>();
+  private activeJobs = 0;
 
-  constructor(private readonly prisma: PrismaService, private readonly runner: PistonRunnerService, private readonly usage: UsageService) {}
+  constructor(private readonly prisma: PrismaService, private readonly runner: PistonRunnerService, private readonly usage: UsageService,
+    @Optional() private readonly config?: ConfigService) {}
 
   async onModuleInit() {
     const stale = await this.prisma.submission.findMany({
       where: { status: { in: [SubmissionStatus.QUEUED, SubmissionStatus.JUDGING] } },
       select: { id: true },
+      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
     });
     if (stale.length) {
       await this.prisma.submission.updateMany({ where: { id: { in: stale.map((item) => item.id) } }, data: { status: SubmissionStatus.QUEUED } });
-      stale.forEach((item) => void this.judge(item.id));
+      stale.forEach((item) => this.enqueue(item.id));
     }
   }
 
@@ -47,8 +54,30 @@ export class SubmissionsService implements OnModuleInit {
       },
       select: { id: true, status: true, submittedAt: true },
     });
-    void this.judge(submission.id);
+    this.enqueue(submission.id);
     return submission;
+  }
+
+  private enqueue(id: string) {
+    if (this.scheduled.has(id)) return;
+    this.scheduled.add(id);
+    this.pending.push(id);
+    this.drain();
+  }
+
+  private drain() {
+    const max = positiveInteger(this.config?.get<string | number>('SUBMISSION_MAX_CONCURRENCY'), 2);
+    while (this.activeJobs < max && this.pending.length) {
+      const id = this.pending.shift()!;
+      this.activeJobs += 1;
+      const finish = () => {
+        this.activeJobs -= 1;
+        this.scheduled.delete(id);
+        this.drain();
+      };
+      // Only IDs wait in memory; the saved submission remains QUEUED until a worker starts.
+      void this.judge(id).then(finish, finish);
+    }
   }
 
   async listMine(user: AuthUser) {
