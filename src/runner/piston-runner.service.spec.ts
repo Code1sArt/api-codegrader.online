@@ -9,6 +9,16 @@ describe('PistonRunnerService', () => {
     get: (key: string, fallback?: unknown) => ({ PISTON_BASE_URL: 'http://piston.test', RUNNER_MAX_CONCURRENCY: String(concurrency) })[key] ?? fallback,
   }) as unknown as ConfigService;
 
+  it.each(['OL', 'EL'])('preserves an explicit diagnostic for %s despite sandbox stderr', async (status) => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      run: { code: null, signal: 'SIGKILL', status, stderr: 'Sandbox keeper received fatal signal 6\n' },
+    })));
+    const result = await new PistonRunnerService(configFor(1)).execute(Language.CPP, '', '', 1000, 128);
+    expect(result.status).toBe(SubmissionStatus.RUNTIME_ERROR);
+    expect(result.message).toContain(status === 'OL' ? 'stdout length exceeded' : 'stderr length exceeded');
+    expect(result.stderr).toContain('fatal signal 6');
+  });
+
   it('bounds 40 simultaneous executions and releases slots after runner failures', async () => {
     let active = 0;
     let peak = 0;

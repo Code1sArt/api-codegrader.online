@@ -152,6 +152,8 @@ curl -X POST http://localhost:3100/api/problems/PROBLEM_ID/test-cases/zip \
 
 ## Piston inputs and subtask judging
 
+Piston must allow legitimate answer output as well as large input. The Watchtower's large cases exceeded the production `PISTON_OUTPUT_MAX_SIZE=100000`, returning `OL` / `stdout length exceeded`; the sandbox's signal message obscured that explanation. Run `sudo bash scripts/fix-piston-output-limit.sh` on the production host to back up the compose file, raise the bounded output buffer to 16 MiB, and recreate only the Piston API service with its existing image and runtime volumes. The script restores the previous configuration if restart/readiness validation fails. Verify the original large cases after applying it; existing submission scores are not automatically recalculated. Runner diagnostics now preserve both the limit explanation and stderr.
+
 ### Classroom capacity (40 students)
 
 - Authenticated API limits are tracked per verified account, so students sharing one school IP do not share the Playground quota of 10 runs/minute. Public endpoints still use an IP quota. JWT authentication runs before quota tracking.

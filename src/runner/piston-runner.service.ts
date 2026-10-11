@@ -87,7 +87,11 @@ export class PistonRunnerService {
       stdout: run?.stdout ?? '',
       stderr: run?.stderr ?? '',
       compilerOutput: compileFailed ? result.compile?.output ?? result.compile?.stderr ?? '' : '',
-      message: (compileFailed ? result.compile?.message : run?.message) ?? result.message ?? '',
+      message: !compileFailed && run?.status === 'OL'
+        ? 'Output เกินขีดจำกัดของระบบตรวจ (stdout length exceeded)'
+        : !compileFailed && run?.status === 'EL'
+          ? 'ข้อความ stderr เกินขีดจำกัดของระบบตรวจ (stderr length exceeded)'
+          : (compileFailed ? result.compile?.message : run?.message) ?? result.message ?? '',
       executionTimeMs,
       memoryUsedKb,
     };

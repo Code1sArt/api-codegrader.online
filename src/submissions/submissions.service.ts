@@ -248,7 +248,7 @@ export class SubmissionsService implements OnModuleInit {
             executionTimeMs: run.executionTimeMs,
             memoryUsedKb: run.memoryUsedKb,
             actualOutput: run.stdout,
-            errorOutput: run.stderr || run.message || null,
+            errorOutput: [run.message, run.stderr].filter(Boolean).join('\n') || null,
           },
         });
         if (resultStatus === SubmissionStatus.COMPILE_ERROR) {

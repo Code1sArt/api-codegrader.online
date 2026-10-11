@@ -39,6 +39,15 @@ function judgeSetup(statuses: S[]) {
   return { service, prisma, runner, problem };
 }
 describe('subtask judging integration', () => {
+  it('stores the output-limit explanation alongside sandbox stderr', async () => {
+    const { service, prisma, runner } = judgeSetup([]);
+    runner.execute.mockResolvedValue({ status: S.RUNTIME_ERROR, stdout: '',
+      message: 'Output เกินขีดจำกัดของระบบตรวจ (stdout length exceeded)',
+      stderr: 'Sandbox keeper received fatal signal 6\n', compilerOutput: '', executionTimeMs: 10, memoryUsedKb: 64 });
+    await service['judge']('submission');
+    expect(prisma.submissionResult.create.mock.calls[0][0].data.errorOutput)
+      .toBe('Output เกินขีดจำกัดของระบบตรวจ (stdout length exceeded)\nSandbox keeper received fatal signal 6\n');
+  });
   it('skips the remaining tests in a failed subtask', async () => {
     const { service, prisma, runner } = judgeSetup([S.ACCEPTED, S.TIME_LIMIT_EXCEEDED, S.ACCEPTED]);
     await service['judge']('submission');
