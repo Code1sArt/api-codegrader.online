@@ -6,7 +6,7 @@ describe('SettingsService', () => {
     const findUnique = jest.fn().mockResolvedValue(null);
     const service = new SettingsService({ systemSetting: { findUnique } } as unknown as PrismaService);
 
-    await expect(service.get()).resolves.toEqual({ playgroundEnabled: false, updatedAt: null });
+    await expect(service.get()).resolves.toEqual({ playgroundEnabled: false, submissionDraftVersion: 0, updatedAt: null });
   });
 
   it('persists the admin setting with an upsert', async () => {

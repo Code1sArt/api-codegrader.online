@@ -10,9 +10,9 @@ export class SettingsService {
   async get() {
     const settings = await this.prisma.systemSetting.findUnique({
       where: { id: GLOBAL_SETTINGS_ID },
-      select: { playgroundEnabled: true, updatedAt: true },
+      select: { playgroundEnabled: true, submissionDraftVersion: true, updatedAt: true },
     });
-    return settings ?? { playgroundEnabled: false, updatedAt: null };
+    return settings ?? { playgroundEnabled: false, submissionDraftVersion: 0, updatedAt: null };
   }
 
   async isPlaygroundEnabled() {
@@ -24,7 +24,7 @@ export class SettingsService {
       where: { id: GLOBAL_SETTINGS_ID },
       create: { id: GLOBAL_SETTINGS_ID, playgroundEnabled },
       update: { playgroundEnabled },
-      select: { playgroundEnabled: true, updatedAt: true },
+      select: { playgroundEnabled: true, submissionDraftVersion: true, updatedAt: true },
     });
   }
 }

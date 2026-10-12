@@ -215,6 +215,7 @@ model SubmissionResult {
 model SystemSetting {
   id                String   @id
   playgroundEnabled Boolean  @default(false)
+  submissionDraftVersion Int @default(0)
   updatedAt         DateTime @updatedAt
 }
 

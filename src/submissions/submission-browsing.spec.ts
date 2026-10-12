@@ -22,8 +22,11 @@ function setup() {
       deleteMany: jest.fn().mockResolvedValue({ count: 51 }),
       updateMany: jest.fn<Promise<{ count: number }>, [Prisma.SubmissionUpdateManyArgs]>().mockResolvedValue({ count: 2 }),
     },
-    $transaction: (queries: Promise<unknown>[]) => Promise.all(queries),
+    systemSetting: { upsert: jest.fn().mockResolvedValue({ submissionDraftVersion: 1 }) },
+    $transaction: jest.fn(),
   };
+  prisma.$transaction.mockImplementation((queries: Promise<unknown>[] | ((tx: typeof prisma) => Promise<unknown>)) =>
+    typeof queries === 'function' ? queries(prisma) : Promise.all(queries));
   const service = new SubmissionsService(prisma as unknown as PrismaService, {} as PistonRunnerService, { record: jest.fn(), countGraderRun: jest.fn() } as unknown as UsageService);
   return { service, prisma };
 }
@@ -78,13 +81,18 @@ describe('submission browsing and score resets', () => {
   });
   it('clears all attempts across users, problems and competitions', async () => {
     const { service, prisma } = setup();
-    expect(await service.clearAll()).toEqual({ deletedCount: 51 });
+    expect(await service.clearAll()).toEqual({ deletedCount: 51, submissionDraftVersion: 1 });
     expect(prisma.submission.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.systemSetting.upsert).toHaveBeenCalledWith({
+      where: { id: 'global' }, create: { id: 'global', submissionDraftVersion: 1 },
+      update: { submissionDraftVersion: { increment: 1 } }, select: { submissionDraftVersion: true },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
   });
   it('reports an empty database and propagates deletion failures', async () => {
     const { service, prisma } = setup();
     prisma.submission.deleteMany.mockResolvedValueOnce({ count: 0 });
-    expect(await service.clearAll()).toEqual({ deletedCount: 0 });
+    expect(await service.clearAll()).toEqual({ deletedCount: 0, submissionDraftVersion: 1 });
     prisma.submission.deleteMany.mockRejectedValueOnce(new Error('Database unavailable'));
     await expect(service.clearAll()).rejects.toThrow('Database unavailable');
   });

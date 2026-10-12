@@ -178,3 +178,9 @@ The production Piston image uses body-parser's default JSON request limit. Large
 - ADMIN: `POST /submissions/admin/problems/:problemId/reset`, body `{}` for all respondents or `{ "userId": "..." }` for one respondent. This marks existing attempts with scoreResetAt; no history or code is deleted. History/details return zero points for reset attempts, including subtask/test scores. Leaderboards exclude reset attempts. New attempts count normally and in-flight judging does not clear the reset marker.
 
 Run `npm run db:deploy` and regenerate Prisma Client for migration `20261009090000_submission_score_reset` before releasing the new frontend.
+
+### Clearing all submissions and local drafts
+
+Admin-only `DELETE /api/submissions/admin/all` deletes every submission (including competition attempts and cascaded test results) and increments `SystemSetting.submissionDraftVersion` in one transaction. It returns `{ deletedCount, submissionDraftVersion }`. Both leaderboards derive their scores from submissions. Accounts, problems, competitions, participants and usage logs remain intact.
+
+`GET /api/settings` exposes the version so each browser can invalidate its local problem drafts, including open tabs and devices reconnecting later. Deploy the matching frontend and apply migration `20261012000000_submission_draft_version` with `npm run db:deploy`, then run `npm run db:generate` before building the API. Existing drafts left by an earlier clear operation require another clear after deploying this version. Playground drafts remain separate.
