@@ -39,6 +39,25 @@ function judgeSetup(statuses: S[]) {
   return { service, prisma, runner, problem };
 }
 describe('subtask judging integration', () => {
+  it('stops a running job when its submission was deleted while the runner was executing', async () => {
+    const { service, prisma, runner, problem } = judgeSetup([S.ACCEPTED]);
+    prisma.submissionResult.create.mockRejectedValueOnce(new Error('Submission foreign key no longer exists'));
+    // The first update must still load the job; only later updates fail after deletion.
+    prisma.submission.update.mockReset().mockResolvedValueOnce({ language: Language.PYTHON, sourceCode: 'print("ok")', problem })
+      .mockRejectedValue(new Error('Submission not found'));
+    await expect(service['judge']('deleted')).resolves.toBeUndefined();
+    expect(runner.execute).toHaveBeenCalledTimes(1);
+    expect(prisma.submissionResult.create).toHaveBeenCalledTimes(1);
+    expect(service['processing'].size).toBe(0);
+  });
+  it('skips queued jobs deleted before judging starts', async () => {
+    const { service, prisma, runner } = judgeSetup([]);
+    prisma.submission.update.mockRejectedValue(new Error('Submission not found'));
+    await expect(service['judge']('deleted')).resolves.toBeUndefined();
+    expect(runner.execute).not.toHaveBeenCalled();
+    expect(prisma.submissionResult.create).not.toHaveBeenCalled();
+    expect(service['processing'].size).toBe(0);
+  });
   it('stores the output-limit explanation alongside sandbox stderr', async () => {
     const { service, prisma, runner } = judgeSetup([]);
     runner.execute.mockResolvedValue({ status: S.RUNTIME_ERROR, stdout: '',

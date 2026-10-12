@@ -146,6 +146,14 @@ export class SubmissionsService implements OnModuleInit {
     return { resetCount: result.count };
   }
 
+  async clearAll() {
+    // Results are removed by the database's ON DELETE CASCADE. Both leaderboards
+    // derive scores from submissions, so deleting attempts also clears scores.
+    // Workers holding deleted IDs cannot recreate submissions or their results.
+    const result = await this.prisma.submission.deleteMany({});
+    return { deletedCount: result.count };
+  }
+
   async get(user: AuthUser, id: string) {
     const submission = await this.prisma.submission.findUnique({
       where: { id },

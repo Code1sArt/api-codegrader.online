@@ -19,6 +19,7 @@ function setup() {
       findMany: jest.fn<Promise<unknown[]>, [Prisma.SubmissionFindManyArgs]>().mockResolvedValue([]),
       findUnique: jest.fn<Promise<unknown>, [Prisma.SubmissionFindUniqueArgs]>(),
       count: jest.fn().mockResolvedValue(51),
+      deleteMany: jest.fn().mockResolvedValue({ count: 51 }),
       updateMany: jest.fn<Promise<{ count: number }>, [Prisma.SubmissionUpdateManyArgs]>().mockResolvedValue({ count: 2 }),
     },
     $transaction: (queries: Promise<unknown>[]) => Promise.all(queries),
@@ -63,7 +64,7 @@ describe('submission browsing and score resets', () => {
     expect(await service.get({ sub: 'u', email: 'u@example.test', role: UserRole.ADMIN }, 's')).toMatchObject({ sourceCode: 'private code', score: 0, subtaskResults: [{ score: 0 }] });
   });
   it('requires the admin role for every admin endpoint', () => {
-    for (const method of ['adminProblems', 'adminRespondents', 'adminHistory', 'reset'] as const) {
+    for (const method of ['adminProblems', 'adminRespondents', 'adminHistory', 'reset', 'clearAll'] as const) {
       const handler: unknown = Object.getOwnPropertyDescriptor(SubmissionsController.prototype, method)?.value;
       if (typeof handler !== 'function') throw new Error('Missing controller method');
       const roles: unknown = Reflect.getMetadata(ROLES_KEY, handler);
@@ -74,5 +75,17 @@ describe('submission browsing and score resets', () => {
     expect(await validate(plainToInstance(ResetScoresDto, { userId: null }))).not.toHaveLength(0);
     expect(await validate(plainToInstance(ResetScoresDto, { userId: '' }))).not.toHaveLength(0);
     for (const page of ['bad', 0, 1.5, 1000001]) expect(await validate(plainToInstance(SubmissionHistoryDto, { page }))).not.toHaveLength(0);
+  });
+  it('clears all attempts across users, problems and competitions', async () => {
+    const { service, prisma } = setup();
+    expect(await service.clearAll()).toEqual({ deletedCount: 51 });
+    expect(prisma.submission.deleteMany).toHaveBeenCalledWith({});
+  });
+  it('reports an empty database and propagates deletion failures', async () => {
+    const { service, prisma } = setup();
+    prisma.submission.deleteMany.mockResolvedValueOnce({ count: 0 });
+    expect(await service.clearAll()).toEqual({ deletedCount: 0 });
+    prisma.submission.deleteMany.mockRejectedValueOnce(new Error('Database unavailable'));
+    await expect(service.clearAll()).rejects.toThrow('Database unavailable');
   });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/roles.decorator';
@@ -55,6 +55,12 @@ export class SubmissionsController {
   @Post('admin/problems/:problemId/reset')
   reset(@Param('problemId') problemId: string, @Body() dto: ResetScoresDto) {
     return this.submissions.resetScores(problemId, dto.userId);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete('admin/all')
+  clearAll() {
+    return this.submissions.clearAll();
   }
 
   @Get(':id')
